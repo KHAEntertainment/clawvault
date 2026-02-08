@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClawVault - Secret Submission</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 500px;
+      width: 100%;
+      padding: 2rem;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .header h1 {
+      font-size: 1.75rem;
+      color: #333;
+      margin-bottom: 0.5rem;
+    }
+
+    .header .subtitle {
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .security-badge {
+      display: inline-flex;
+      align-items: center;
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      margin-top: 1rem;
+    }
+
+    .security-badge svg {
+      width: 16px;
+      height: 16px;
+      margin-right: 0.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      color: #444;
+      font-size: 0.9rem;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    button {
+      flex: 1;
+      padding: 0.875rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    button.primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button.primary:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: #f5f5f5;
+      color: #666;
+    }
+
+    button.secondary:hover {
+      background: #eee;
+    }
+
+    .result {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .result.success {
+      display: block;
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #c8e6c9;
+    }
+
+    .result.error {
+      display: block;
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #ffcdd2;
+    }
+
+    .status-section {
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px solid #eee;
+    }
+
+    .status-section h3 {
+      font-size: 1rem;
+      color: #666;
+      margin-bottom: 1rem;
+    }
+
+    .secret-list {
+      list-style: none;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .secret-list li {
+      padding: 0.5rem;
+      background: #f5f5f5;
+      margin-bottom: 0.5rem;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+
+    .secret-list li:empty::before {
+      content: "No secrets stored";
+      color: #999;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e0e0e0;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-left: 0.5rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>ClawVault</h1>
+      <p class="subtitle">Secure Secret Management for OpenClaw</p>
+      <div class="security-badge">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        Secrets stored directly to encrypted keyring
+      </div>
+    </div>
+
+    <form id="secretForm">
+      <div class="form-group">
+        <label for="secretName">Secret Name</label>
+        <input
+          type="text"
+          id="secretName"
+          name="secretName"
+          required
+          placeholder="e.g., OPENAI_API_KEY"
+          pattern="^[A-Z][A-Z0-9_]*$"
+          title="Must start with uppercase letter and contain only letters, numbers, and underscores"
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="description">Description (optional)</label>
+        <input
+          type="text"
+          id="description"
+          name="description"
+          placeholder="e.g., OpenAI API key for GPT models"
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="secretValue">Secret Value</label>
+        <input
+          type="password"
+          id="secretValue"
+          name="secretValue"
+          required
+          placeholder="Enter secret value"
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="button-group">
+        <button type="submit" class="primary">Store Secret</button>
+        <button type="button" class="secondary" id="refreshBtn">Refresh Status</button>
+      </div>
+    </form>
+
+    <div id="result" class="result"></div>
+
+    <div class="status-section">
+      <h3>Stored Secrets <span id="loadingSpinner" class="loading" style="display: none;"></span></h3>
+      <ul id="secretList" class="secret-list">
+        <li>Loading...</li>
+      </ul>
+      <p id="secretCount" style="margin-top: 0.5rem; color: #666; font-size: 0.85rem;"></p>
+    </div>
+  </div>
+
+  <script>
+    // Load and display stored secrets
+    async function loadSecrets() {
+      const listEl = document.getElementById('secretList');
+      const countEl = document.getElementById('secretCount');
+      const spinner = document.getElementById('loadingSpinner');
+
+      spinner.style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+
+        if (data.secrets && data.secrets.length > 0) {
+          listEl.innerHTML = data.secrets
+            .map(s => `<li>${escapeHtml(s.name)}</li>`)
+            .join('');
+          countEl.textContent = `Total: ${data.count} secret${data.count !== 1 ? 's' : ''}`;
+        } else {
+          listEl.innerHTML = '<li>No secrets stored</li>';
+          countEl.textContent = 'Total: 0 secrets';
+        }
+      } catch (err) {
+        listEl.innerHTML = '<li>Failed to load secrets</li>';
+        countEl.textContent = '';
+      } finally {
+        spinner.style.display = 'none';
+      }
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Handle form submission
+    document.getElementById('secretForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(e.target);
+      const data = {
+        secretName: formData.get('secretName'),
+        secretValue: formData.get('secretValue'),
+        description: formData.get('description') || null
+      };
+
+      const resultDiv = document.getElementById('result');
+      resultDiv.className = 'result';
+      resultDiv.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+          resultDiv.className = 'result success';
+          resultDiv.textContent = `✓ ${result.message}`;
+          e.target.reset();
+          // Refresh the secret list
+          await loadSecrets();
+        } else {
+          resultDiv.className = 'result error';
+          resultDiv.textContent = `✗ ${result.error || 'Failed to store secret'}`;
+        }
+      } catch (err) {
+        resultDiv.className = 'result error';
+        resultDiv.textContent = '✗ Failed to submit secret. Server may be unavailable.';
+      }
+
+      resultDiv.style.display = 'block';
+    });
+
+    // Refresh button
+    document.getElementById('refreshBtn').addEventListener('click', loadSecrets);
+
+    // Load secrets on page load
+    loadSecrets();
+  </script>
+</body>
+</html>
