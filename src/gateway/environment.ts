@@ -48,7 +48,14 @@ export async function injectSecrets(
   const env: EnvironmentInjection = {}
 
   for (const name of secretNames) {
-    const value = await storage.get(name)
+    let value: string | null
+
+    try {
+      value = await storage.get(name)
+    } catch (error: unknown) {
+      throw new Error(`Failed to retrieve secret for injection: ${name}`, { cause: error })
+    }
+
     if (value) {
       // By default, use the secret name as the environment variable name
       // This can be overridden by config lookup in the calling code
@@ -84,8 +91,8 @@ export async function injectSecretsWithConfig(
 
     try {
       value = await storage.get(name)
-    } catch {
-      throw new Error(`Failed to retrieve secret for injection: ${name}`)
+    } catch (error: unknown) {
+      throw new Error(`Failed to retrieve secret for injection: ${name}`, { cause: error })
     }
 
     if (value) {

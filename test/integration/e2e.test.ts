@@ -14,7 +14,7 @@
 import { createStorage } from '../../src/storage/index'
 import { loadConfig, ConfigSchema } from '../../src/config/index'
 import { injectToGateway } from '../../src/gateway/index'
-import { execSync } from 'child_process'
+import { hasSystemdUserSession } from '../helpers/systemd'
 
 /**
  * Helper class to capture console output for leak detection
@@ -83,19 +83,6 @@ class ConsoleCapture {
 /**
  * Test secret value patterns that should NEVER appear in logs
  */
-
-function hasSystemdUserSession(): boolean {
-  if (process.platform !== 'linux') {
-    return false
-  }
-
-  try {
-    execSync('systemctl --user show-environment', { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
 
 const SECRET_PATTERNS = [
   /sk-[a-zA-Z0-9]{48}/, // OpenAI API key format

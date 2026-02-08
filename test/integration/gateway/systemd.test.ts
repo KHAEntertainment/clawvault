@@ -6,21 +6,10 @@
  */
 
 import { SystemdManager, SystemdError, createSystemdManager } from '../../../src/gateway/systemd'
-import { execSync } from 'child_process'
+import { hasSystemdUserSession } from '../../helpers/systemd'
 
 // Skip all tests when no systemd user session is available
-const describeSystemd = (() => {
-  if (process.platform !== 'linux') {
-    return describe.skip
-  }
-
-  try {
-    execSync('systemctl --user show-environment', { stdio: 'ignore' })
-    return describe
-  } catch {
-    return describe.skip
-  }
-})()
+const describeSystemd = hasSystemdUserSession() ? describe : describe.skip
 
 describeSystemd('SystemdManager', () => {
   let systemd: SystemdManager

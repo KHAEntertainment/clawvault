@@ -14,7 +14,7 @@ import {
   GatewayInjectionError
 } from '../../../src/gateway/index'
 import { ConfigSchema } from '../../../src/config/schemas'
-import { execSync } from 'child_process'
+import { hasSystemdUserSession } from '../../helpers/systemd'
 
 // Mock storage provider
 class MockStorageProvider {
@@ -90,19 +90,6 @@ class MockSystemdManager {
   }
 }
 
-
-function hasSystemdUserSession(): boolean {
-  if (process.platform !== 'linux') {
-    return false
-  }
-
-  try {
-    execSync('systemctl --user show-environment', { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe('Gateway Integration', () => {
   let storage: MockStorageProvider
