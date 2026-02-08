@@ -41,35 +41,44 @@ export const serveCommand = new Command('serve')
     console.log(chalk.gray(`Starting server on ${options.host}:${port}`))
 
     try {
-      // Try to import web module (may not exist if Phase 4 not complete)
+      // Try to import web module (may not exist in partial builds)
+      let webModule: Awaited<typeof import('../../web/index.js')>
       try {
-        const webModule = await import('../../web/index.js')
-        await webModule.startServer(storage, {
-          port,
-          host: options.host,
-          ...(options.tls && {
-            tls: {
-              cert: options.cert!,
-              key: options.key!
-            }
-          })
-        })
+        webModule = await import('../../web/index.js')
+      } catch (error: unknown) {
+        const code =
+          error && typeof error === 'object' && 'code' in error
+            ? String((error as { code?: string }).code)
+            : ''
 
-        const protocol = options.tls ? 'https' : 'http'
-        console.log('')
-        console.log(chalk.green(`Server running at ${protocol}://${options.host}:${port}`))
-        console.log(chalk.gray('Press Ctrl+C to stop'))
-      } catch {
-        // Web module not available - show helpful message
-        console.log('')
-        console.log(chalk.yellow('Web UI module not found.'))
-        console.log(chalk.gray('The web server will be available when Phase 4 is complete.'))
-        console.log(chalk.gray('For now, use the CLI commands:'))
-        console.log(chalk.gray(`  clawvault add <name>    - Add a secret`))
-        console.log(chalk.gray(`  clawvault list          - List secrets`))
-        console.log(chalk.gray(`  clawvault rotate <name> - Update a secret`))
-        return
+        if (code === 'ERR_MODULE_NOT_FOUND') {
+          console.log('')
+          console.log(chalk.yellow('Web UI module not found.'))
+          console.log(chalk.gray('For now, use the CLI commands:'))
+          console.log(chalk.gray(`  clawvault add <name>    - Add a secret`))
+          console.log(chalk.gray(`  clawvault list          - List secrets`))
+          console.log(chalk.gray(`  clawvault rotate <name> - Update a secret`))
+          return
+        }
+
+        throw error
       }
+
+      await webModule.startServer(storage, {
+        port,
+        host: options.host,
+        ...(options.tls && {
+          tls: {
+            cert: options.cert!,
+            key: options.key!
+          }
+        })
+      })
+
+      const protocol = options.tls ? 'https' : 'http'
+      console.log('')
+      console.log(chalk.green(`Server running at ${protocol}://${options.host}:${port}`))
+      console.log(chalk.gray('Press Ctrl+C to stop'))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       console.log(chalk.red(`Failed to start server: ${message}`))
