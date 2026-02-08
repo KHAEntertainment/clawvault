@@ -6,9 +6,18 @@
  */
 
 import { SystemdManager, SystemdError, createSystemdManager } from '../../../src/gateway/systemd'
+import { existsSync } from 'fs'
+import { join } from 'path'
 
 // Skip all tests if not on Linux with systemd
-const describeSystemd = process.platform === 'linux' ? describe : describe.skip
+const xdgRuntimeDir = process.env.XDG_RUNTIME_DIR
+const hasUserBus =
+  process.platform === 'linux' &&
+  typeof xdgRuntimeDir === 'string' &&
+  xdgRuntimeDir.length > 0 &&
+  existsSync(join(xdgRuntimeDir, 'bus'))
+
+const describeSystemd = hasUserBus ? describe : describe.skip
 
 describeSystemd('SystemdManager', () => {
   let systemd: SystemdManager

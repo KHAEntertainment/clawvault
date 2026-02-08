@@ -119,10 +119,14 @@ export function createFromTemplate(
     return null
   }
 
+  const description = template.description.includes(templateName)
+    ? template.description.replaceAll(templateName, customName)
+    : `${template.description} (${customName})`
+
   return {
     ...template,
     environmentVar: customName,
-    description: template.description.replace(templateName, customName)
+    description
   }
 }
 

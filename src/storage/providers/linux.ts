@@ -1,8 +1,17 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { StorageProvider } from '../interfaces.js'
 
-const execAsync = promisify(exec)
+async function execAsync(command: string): Promise<{ stdout: string; stderr: string }> {
+  const { exec } = await import('child_process')
+  return await new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve({ stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
+    })
+  })
+}
 
 /**
  * Service name used in GNOME Keyring for all ClawVault secrets
@@ -35,8 +44,7 @@ export class LinuxKeyringProvider implements StorageProvider {
   async get(name: string): Promise<string | null> {
     try {
       const { stdout } = await execAsync(
-        `secret-tool lookup service "${SERVICE}" key "${name}" 2>/dev/null`,
-        { encoding: 'utf-8' }
+        `secret-tool lookup service "${SERVICE}" key "${name}" 2>/dev/null`
       )
       return stdout.trim() || null
     } catch {
@@ -90,7 +98,7 @@ export class LinuxKeyringProvider implements StorageProvider {
 
     // Parse gdbus output format: ({'key': <'NAME'>}, ...)
     // Look for key patterns between single quotes after 'key': <
-    const keyPattern = /'key':\s*< '([^']+)'>/g
+    const keyPattern = /'key':\s*<\s*'([^']+)'\s*>/g
     let match
     while ((match = keyPattern.exec(output)) !== null) {
       names.push(match[1])

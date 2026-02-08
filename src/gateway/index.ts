@@ -79,12 +79,18 @@ export async function injectToGateway(
   // Inject secrets with config-aware environment variable mapping
   const result = await injectSecretsWithConfig(storage, secretNames, envVarMap)
 
-  // Import environment to systemd user session
+  // Inject into current process environment
   if (result.injected.length > 0) {
-    await systemd.importEnvironment(result.injected)
-
-    // Also inject into current process environment
     injectIntoProcess(result.env)
+
+    // Import environment to systemd user session (best-effort when skipRestart is true)
+    try {
+      await systemd.importEnvironment(result.injected)
+    } catch (error: unknown) {
+      if (!options?.skipRestart) {
+        throw new GatewayInjectionError('Failed to import environment to systemd', error)
+      }
+    }
   }
 
   // Restart gateway services if configured
