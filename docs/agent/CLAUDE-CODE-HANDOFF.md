@@ -14,9 +14,9 @@ ClawVault combines the best of Confidant (web UI UX) and Secret Manager (keyring
 
 ✅ **Project Setup Complete**
 - Git repository initialized at `/home/openclaw/.openclaw/workspace/projects/clawvault`
-- DESIGN.md with full system architecture (read this first!)
-- PROJECT_BRIEF.md with requirements and success criteria
-- CLAUDE.md with project guidance
+- docs/planning/DESIGN.md with full system architecture (read this first!)
+- docs/planning/PROJECT_BRIEF.md with requirements and success criteria
+- docs/agent/CLAUDE.md with project guidance
 - Reference docs for Confidant and Secret Manager
 - Dependencies installed (npm install completed - 527 packages)
 - Directory structure created
@@ -29,20 +29,20 @@ ClawVault combines the best of Confidant (web UI UX) and Secret Manager (keyring
 
 ## Your Mission
 
-Implement ClawVault following the DESIGN.md implementation phases.
+Implement ClawVault following the docs/planning/DESIGN.md implementation phases.
 
 ### Phase 1: Core Storage (Days 1-2)
 **Status:** Not started
 
 **Tasks:**
-1. Read `DESIGN.md` → Section 11 (Implementation Phases)
+1. Read `docs/planning/DESIGN.md` → Section 11 (Implementation Phases)
 2. Create TypeScript type definitions (`src/types/index.ts`)
 3. Define storage interface (`src/storage/interfaces.ts`)
 4. Implement platform detection
 5. Implement Linux keyring provider (`src/storage/providers/linux.ts`)
    - Use `secret-tool` command
    - Implement: `set(name, value)`, `get(name)`, `delete(name)`, `list()`
-   - Follow keyring schema from DESIGN.md
+   - Follow keyring schema from docs/planning/DESIGN.md
 6. Implement storage factory (`src/storage/index.ts`)
 7. Write unit tests (`test/unit/storage/`)
    - Test all CRUD operations
@@ -261,12 +261,12 @@ Ready for testing and review.
 
 ## Files to Reference
 
-- **DESIGN.md** - Complete system design (read first!)
-- **PROJECT_BRIEF.md** - Requirements and success criteria
-- **CLAUDE.md** - Project guidance for you
-- **reference-secret-manager.md** - Secret Manager analysis
-- **reference-secret-manager.sh** - Secret Manager script (bash)
-- **reference-confidant.md** - Confidant analysis
+- **docs/planning/DESIGN.md** - Complete system design (read first!)
+- **docs/planning/PROJECT_BRIEF.md** - Requirements and success criteria
+- **docs/agent/CLAUDE.md** - Project guidance for you
+- **docs/reference/reference-secret-manager.md** - Secret Manager analysis
+- **docs/reference/reference-secret-manager.sh** - Secret Manager script (bash)
+- **docs/reference/reference-confidant.md** - Confidant analysis
 - **tsconfig.json** - TypeScript configuration
 - **package.json** - Dependencies and scripts
 
@@ -281,7 +281,7 @@ Ready for testing and review.
   - "Phase 2: Implement config system with validation"
 - Push to remote when complete
 
-## Success Criteria (From DESIGN.md)
+## Success Criteria (From docs/planning/DESIGN.md)
 
 - ✅ Secrets NEVER enter AI context (verified via security tests)
 - ✅ Platform-agnostic keyring support (Linux, macOS, Windows)
