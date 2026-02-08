@@ -48,7 +48,7 @@ export async function submitSecret(
     return
   }
 
-  if (!secretValue || typeof secretValue !== 'string') {
+  if (typeof secretValue !== 'string') {
     res.status(400).json({
       success: false,
       error: 'Missing or invalid secretValue'
@@ -90,13 +90,14 @@ export async function submitSecret(
       }
     })
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`Failed to store secret metadata for ${secretName}: ${message}`)
 
-    // Never include secret values in error messages
+    // Never include provider/internal details in client-facing responses
     res.status(500).json({
       success: false,
       error: 'Failed to store secret',
-      message: errorMessage
+      message: 'Internal error while storing secret'
     })
   }
 }

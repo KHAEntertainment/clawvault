@@ -189,7 +189,7 @@ describe('Security: No secret values logged', () => {
       'console.log(secret)',
       'console.log(password)',
       '.value,',
-      'log(.*secret.*value'
+      'log\\(.*secret.*value'
     ]
 
     for (const pattern of dangerousPatterns) {

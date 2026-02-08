@@ -14,6 +14,7 @@
 import { createStorage } from '../../src/storage/index'
 import { loadConfig, ConfigSchema } from '../../src/config/index'
 import { injectToGateway } from '../../src/gateway/index'
+import { hasSystemdUserSession } from '../helpers/systemd'
 
 /**
  * Helper class to capture console output for leak detection
@@ -82,6 +83,7 @@ class ConsoleCapture {
 /**
  * Test secret value patterns that should NEVER appear in logs
  */
+
 const SECRET_PATTERNS = [
   /sk-[a-zA-Z0-9]{48}/, // OpenAI API key format
   /sk-ant-[a-zA-Z0-9_-]{95}/, // Anthropic API key format
@@ -254,7 +256,9 @@ describe('End-to-End Tests', () => {
     })
   })
 
-  describe('Gateway Injection Workflow', () => {
+  const describeGateway = hasSystemdUserSession() ? describe : describe.skip
+
+  describeGateway('Gateway Injection Workflow', () => {
     it('should prepare secrets for injection', async () => {
       const config = await loadConfig()
 

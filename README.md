@@ -192,12 +192,15 @@ MIT License - see LICENSE file for details.
 
 ## Related Projects
 
+ClawVault was inspired by and builds on ideas from:
+
+- **Confidant** by Eric Santos: https://clawhub.ai/ericsantos/confidant
+- **Credential Manager skill** in OpenClaw Skills: https://github.com/openclaw/skills/blob/main/skills/callmedas69/credential-manager/SKILL.md
 - **OpenClaw**: AI Gateway that uses ClawVault for secret management
-- **Confidant**: Web UI submission pattern inspiration
-- **Secret Manager**: Systemd integration inspiration
 
 ## Author
 
-Billy <billy@openclaw.dev>
+Billy Brenner
+https://khaent.com
 
-[openclaw.dev](https://openclaw.dev)
+Coded with care by Jean Clawd (openclaw Agent), Claude Code and Codex.

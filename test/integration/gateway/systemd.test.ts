@@ -6,9 +6,10 @@
  */
 
 import { SystemdManager, SystemdError, createSystemdManager } from '../../../src/gateway/systemd'
+import { hasSystemdUserSession } from '../../helpers/systemd'
 
-// Skip all tests if not on Linux with systemd
-const describeSystemd = process.platform === 'linux' ? describe : describe.skip
+// Skip all tests when no systemd user session is available
+const describeSystemd = hasSystemdUserSession() ? describe : describe.skip
 
 describeSystemd('SystemdManager', () => {
   let systemd: SystemdManager
