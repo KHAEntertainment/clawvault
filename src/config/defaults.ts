@@ -122,7 +122,7 @@ export function createFromTemplate(
   return {
     ...template,
     environmentVar: customName,
-    description: template.description.replace(templateName, customName)
+    description: `${customName}: ${template.description}`
   }
 }
 

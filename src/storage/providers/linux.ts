@@ -1,13 +1,23 @@
 import { exec } from 'child_process'
-import { promisify } from 'util'
 import { StorageProvider } from '../interfaces.js'
-
-const execAsync = promisify(exec)
 
 /**
  * Service name used in GNOME Keyring for all ClawVault secrets
  */
 const SERVICE = 'clawvault'
+
+
+function execCommand(command: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve({ stdout, stderr })
+    })
+  })
+}
 
 /**
  * Linux GNOME Keyring provider using secret-tool CLI
@@ -18,14 +28,23 @@ const SERVICE = 'clawvault'
  * - Delete: secret-tool remove service "$SERVICE" key "$KEY_NAME"
  */
 export class LinuxKeyringProvider implements StorageProvider {
+  private readonly safeNamePattern = /^[A-Z][A-Z0-9_]*$/
+
+  private validateName(name: string): void {
+    if (!this.safeNamePattern.test(name)) {
+      throw new Error(`Invalid secret name: ${name}`)
+    }
+  }
+
   /**
    * Store a secret in GNOME Keyring
    */
   async set(name: string, value: string): Promise<void> {
+    this.validateName(name)
     const label = `ClawVault: ${name}`
     // Use echo -n to avoid trailing newline, pipe to secret-tool store
     const cmd = `echo -n "${this.escapeValue(value)}" | secret-tool store --label="${label}" service "${SERVICE}" key "${name}"`
-    await execAsync(cmd)
+    await execCommand(cmd)
   }
 
   /**
@@ -33,10 +52,10 @@ export class LinuxKeyringProvider implements StorageProvider {
    * INTERNAL USE ONLY - never expose to AI context
    */
   async get(name: string): Promise<string | null> {
+    this.validateName(name)
     try {
-      const { stdout } = await execAsync(
-        `secret-tool lookup service "${SERVICE}" key "${name}" 2>/dev/null`,
-        { encoding: 'utf-8' }
+      const { stdout } = await execCommand(
+        `secret-tool lookup service "${SERVICE}" key "${name}" 2>/dev/null`
       )
       return stdout.trim() || null
     } catch {
@@ -48,7 +67,8 @@ export class LinuxKeyringProvider implements StorageProvider {
    * Delete a secret from GNOME Keyring
    */
   async delete(name: string): Promise<void> {
-    await execAsync(`secret-tool remove service "${SERVICE}" key "${name}"`)
+    this.validateName(name)
+    await execCommand(`secret-tool remove service "${SERVICE}" key "${name}"`)
   }
 
   /**
@@ -58,7 +78,7 @@ export class LinuxKeyringProvider implements StorageProvider {
   async list(): Promise<string[]> {
     try {
       // Use gdbus to search for items with our service attribute
-      const { stdout } = await execAsync(
+      const { stdout } = await execCommand(
         `gdbus call --session --dest org.freedesktop.secrets ` +
           `--object-path /org/freedesktop/secrets/collections/login ` +
           `--method org.freedesktop.Secret.Service.SearchItems ` +
@@ -90,7 +110,7 @@ export class LinuxKeyringProvider implements StorageProvider {
 
     // Parse gdbus output format: ({'key': <'NAME'>}, ...)
     // Look for key patterns between single quotes after 'key': <
-    const keyPattern = /'key':\s*< '([^']+)'>/g
+    const keyPattern = /'key':\s*<\s*'([^']+)'>/g
     let match
     while ((match = keyPattern.exec(output)) !== null) {
       names.push(match[1])

@@ -80,7 +80,14 @@ export async function injectSecretsWithConfig(
   const skipped: string[] = []
 
   for (const name of secretNames) {
-    const value = await storage.get(name)
+    let value: string | null
+
+    try {
+      value = await storage.get(name)
+    } catch {
+      throw new Error(`Failed to retrieve secret for injection: ${name}`)
+    }
+
     if (value) {
       // Use mapped env var name or default to secret name
       const envVar = envVarMap?.[name] || name

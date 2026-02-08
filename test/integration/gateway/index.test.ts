@@ -14,6 +14,7 @@ import {
   GatewayInjectionError
 } from '../../../src/gateway/index'
 import { ConfigSchema } from '../../../src/config/schemas'
+import { execSync } from 'child_process'
 
 // Mock storage provider
 class MockStorageProvider {
@@ -89,6 +90,20 @@ class MockSystemdManager {
   }
 }
 
+
+function hasSystemdUserSession(): boolean {
+  if (process.platform !== 'linux') {
+    return false
+  }
+
+  try {
+    execSync('systemctl --user show-environment', { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
 describe('Gateway Integration', () => {
   let storage: MockStorageProvider
   let systemd: MockSystemdManager
@@ -127,7 +142,9 @@ describe('Gateway Integration', () => {
     delete process.env.GEMINI_API_KEY
   })
 
-  describe('injectToGateway', () => {
+  const describeGateway = hasSystemdUserSession() ? describe : describe.skip
+
+  describeGateway('injectToGateway', () => {
     it('should inject all secrets and restart services', async () => {
       storage.setSecret('OPENAI_API_KEY', 'sk-test-12345')
       storage.setSecret('GEMINI_API_KEY', 'gemini-key-67890')

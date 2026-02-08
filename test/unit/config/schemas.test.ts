@@ -96,7 +96,7 @@ describe('validateConfig', () => {
     expect(validateConfig(invalidVersion)).toBe(false)
 
     const missingVersion = { ...validConfig }
-    delete (invalidVersion as any).version
+    delete (missingVersion as any).version
     expect(validateConfig(missingVersion as any)).toBe(false)
   })
 

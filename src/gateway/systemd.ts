@@ -13,6 +13,24 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
+const ENV_VAR_PATTERN = /^[A-Z][A-Z0-9_]*$/
+const SYSTEMD_SERVICE_PATTERN = /^[a-zA-Z0-9_.@:-]+\.service$/
+
+function sanitizeEnvVars(envVars: string[]): string[] {
+  const invalid = envVars.filter(v => !ENV_VAR_PATTERN.test(v))
+  if (invalid.length > 0) {
+    throw new SystemdError(`Invalid environment variable names: ${invalid.join(', ')}`)
+  }
+  return envVars
+}
+
+function sanitizeServiceName(serviceName: string): string {
+  if (!SYSTEMD_SERVICE_PATTERN.test(serviceName)) {
+    throw new SystemdError(`Invalid service name: ${serviceName}`, serviceName)
+  }
+  return serviceName
+}
+
 /**
  * Helper to exec a command and ignore output.
  */
@@ -86,7 +104,8 @@ export class SystemdManager {
       return // Nothing to import
     }
 
-    const vars = envVars.join(' ')
+    const safeVars = sanitizeEnvVars(envVars)
+    const vars = safeVars.join(' ')
 
     try {
       // Import environment variables to systemd user session
@@ -130,6 +149,7 @@ export class SystemdManager {
     stopDelay = 2000,
     startDelay = 5000
   ): Promise<void> {
+    sanitizeServiceName(serviceName)
     try {
       // Stop the service (ignore errors if not running)
       await execQuiet(`systemctl ${this.userFlag} stop ${serviceName}`)
@@ -172,6 +192,7 @@ export class SystemdManager {
    * @returns true if the service is active
    */
   async isServiceActive(serviceName: string): Promise<boolean> {
+    sanitizeServiceName(serviceName)
     try {
       await execQuiet(`systemctl ${this.userFlag} is-active --quiet ${serviceName}`)
       return true
@@ -187,6 +208,7 @@ export class SystemdManager {
    * @returns true if the service is enabled
    */
   async isServiceEnabled(serviceName: string): Promise<boolean> {
+    sanitizeServiceName(serviceName)
     try {
       await execQuiet(`systemctl ${this.userFlag} is-enabled --quiet ${serviceName}`)
       return true
@@ -205,6 +227,7 @@ export class SystemdManager {
    * @throws SystemdError if status cannot be retrieved
    */
   async getStatus(serviceName: string): Promise<string> {
+    sanitizeServiceName(serviceName)
     try {
       return await execCapture(`systemctl ${this.userFlag} status ${serviceName}`)
     } catch (error: unknown) {
@@ -235,6 +258,7 @@ export class SystemdManager {
    * @returns Structured service status
    */
   async getServiceStatus(serviceName: string): Promise<ServiceStatus> {
+    sanitizeServiceName(serviceName)
     const active = await this.isServiceActive(serviceName)
     const enabled = await this.isServiceEnabled(serviceName)
 
@@ -266,6 +290,7 @@ export class SystemdManager {
    * @throws SystemdError if stop fails
    */
   async stopService(serviceName: string): Promise<void> {
+    sanitizeServiceName(serviceName)
     try {
       await execQuiet(`systemctl ${this.userFlag} stop ${serviceName}`)
     } catch (error: unknown) {
@@ -284,6 +309,7 @@ export class SystemdManager {
    * @throws SystemdError if start fails
    */
   async startService(serviceName: string): Promise<void> {
+    sanitizeServiceName(serviceName)
     try {
       await execQuiet(`systemctl ${this.userFlag} start ${serviceName}`)
     } catch (error: unknown) {
@@ -302,6 +328,7 @@ export class SystemdManager {
    * @throws SystemdError if enable fails
    */
   async enableService(serviceName: string): Promise<void> {
+    sanitizeServiceName(serviceName)
     try {
       await execQuiet(`systemctl ${this.userFlag} enable ${serviceName}`)
     } catch (error: unknown) {
@@ -320,6 +347,7 @@ export class SystemdManager {
    * @throws SystemdError if disable fails
    */
   async disableService(serviceName: string): Promise<void> {
+    sanitizeServiceName(serviceName)
     try {
       await execQuiet(`systemctl ${this.userFlag} disable ${serviceName}`)
     } catch (error: unknown) {
