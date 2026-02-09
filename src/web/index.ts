@@ -94,7 +94,10 @@ export async function createServer(
   options: WebServerOptions,
   token: string
 ): Promise<express.Application> {
-  const requestStore = options.requestStore ?? new SecretRequestStore({ ttlMs: options.requestTtlMs })
+  if (!options.requestStore) {
+    throw new Error('requestStore is required')
+  }
+  const requestStore = options.requestStore
   const app = express()
 
   // --- Helmet: comprehensive security headers ---
@@ -160,9 +163,10 @@ export async function createServer(
   })
 
   // One-time request pages do NOT require bearer token
+  // Apply rate limiting to submission endpoint
   app.get('/requests/:id', (req: Request, res: Response) => requestForm(req, res, requestStore))
-  app.post('/requests/:id/submit', express.urlencoded({ extended: true }), (req: Request, res: Response) => {
-    void requestSubmit(req, res, requestStore, storage)
+  app.post('/requests/:id/submit', submitLimiter, express.urlencoded({ extended: true }), (req: Request, res: Response, next: NextFunction) => {
+    requestSubmit(req, res, requestStore, storage).catch(next)
   })
 
   return app
@@ -195,7 +199,7 @@ export async function startServer(
 
   const protocol = options.tls ? 'https' : 'http'
 
-  let server: any
+  let server: import('http').Server | import('https').Server
   if (options.tls) {
     const https = await import('https')
     const fs = await import('fs')

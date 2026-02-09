@@ -76,9 +76,19 @@ export class SecretRequestStore {
     return req
   }
 
-  markUsed(id: string): SecretRequest | undefined {
+  /**
+   * Atomically check if request exists, is not expired, and is not used,
+   * then mark it used. Returns the request if successfully marked, undefined otherwise.
+   */
+  tryMarkUsed(id: string): SecretRequest | undefined {
     const req = this.requests.get(id)
     if (!req) return undefined
+    if (this.isExpired(req)) {
+      this.requests.delete(id)
+      return undefined
+    }
+    if (req.usedAt) return undefined
+
     req.usedAt = Date.now()
     this.requests.set(id, req)
     const w = this.waiters.get(id)
@@ -87,6 +97,11 @@ export class SecretRequestStore {
       this.waiters.delete(id)
     }
     return req
+  }
+
+  /** @deprecated Use tryMarkUsed for atomic check-and-mark */
+  markUsed(id: string): SecretRequest | undefined {
+    return this.tryMarkUsed(id)
   }
 
   isExpired(req: SecretRequest): boolean {
@@ -99,7 +114,8 @@ export class SecretRequestStore {
 
   waitForFulfilled(id: string): Promise<'fulfilled'> {
     const req = this.requests.get(id)
-    if (req && this.isUsed(req)) return Promise.resolve('fulfilled')
+    if (!req) return Promise.reject(new Error('Request not found'))
+    if (this.isUsed(req)) return Promise.resolve('fulfilled')
     let w = this.waiters.get(id)
     if (!w) {
       w = deferred<'fulfilled'>()
@@ -111,7 +127,11 @@ export class SecretRequestStore {
   cleanup(): void {
     const now = Date.now()
     for (const [id, req] of this.requests.entries()) {
-      if (req.usedAt) continue
+      if (req.usedAt) {
+        // Remove used requests after a 5-minute grace period
+        if (now - req.usedAt > 5 * 60 * 1000) this.requests.delete(id)
+        continue
+      }
       if (now > req.expiresAt) {
         this.requests.delete(id)
         const w = this.waiters.get(id)

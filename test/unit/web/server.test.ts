@@ -7,6 +7,7 @@
 
 import { createServer, isLocalhostBinding } from '../../../src/web/index'
 import { StorageProvider } from '../../../src/storage/interfaces'
+import { SecretRequestStore } from '../../../src/web/requests/store'
 import http from 'http'
 
 class MemoryProvider implements StorageProvider {
@@ -61,7 +62,8 @@ describe('Web Server Security', () => {
 
   beforeAll(async () => {
     storage = new MemoryProvider()
-    const app = await createServer(storage, { port: 0, host: 'localhost' }, DUMMY_AUTH)
+    const requestStore = new SecretRequestStore({ ttlMs: 60000 })
+    const app = await createServer(storage, { port: 0, host: 'localhost', requestStore }, DUMMY_AUTH)
     server = http.createServer(app)
     await new Promise<void>((resolve) => {
       server.listen(0, '127.0.0.1', () => resolve())

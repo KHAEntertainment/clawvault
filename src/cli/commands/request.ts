@@ -36,6 +36,18 @@ export const requestCommand = new Command('request')
     const port = parseInt(options.port, 10)
     const ttlMin = parseInt(options.timeoutMin ?? '15', 10)
 
+    if (!Number.isFinite(port) || port < 1 || port > 65535) {
+      console.log(chalk.red('Error: invalid port number'))
+      process.exitCode = 1
+      return
+    }
+
+    if (!Number.isFinite(ttlMin) || ttlMin < 1) {
+      console.log(chalk.red('Error: invalid timeout-min value'))
+      process.exitCode = 1
+      return
+    }
+
     if (!/^[A-Z][A-Z0-9_]*$/.test(secretName)) {
       console.log(chalk.red('Error: invalid secret name. Must match /^[A-Z][A-Z0-9_]*$/'))
       process.exitCode = 1
@@ -48,8 +60,17 @@ export const requestCommand = new Command('request')
       return
     }
 
-    const storage = await createStorage()
-    const webModule = await import('../../web/index.js')
+    let storage
+    let webModule
+    try {
+      storage = await createStorage()
+      webModule = await import('../../web/index.js')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      console.log(chalk.red(`Failed to initialize: ${message}`))
+      process.exitCode = 1
+      return
+    }
 
     try {
       const result = await webModule.startServer(storage, {

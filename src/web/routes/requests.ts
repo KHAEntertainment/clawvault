@@ -82,27 +82,21 @@ export function requestForm(req: Request, res: Response, store: SecretRequestSto
 
 export async function requestSubmit(req: Request, res: Response, store: SecretRequestStore, storage: StorageProvider): Promise<void> {
   const id = req.params.id
-  const r = store.get(id)
-
-  if (!r) {
-    res.status(404).send(htmlPage('Request not found', `<h1>Request not found</h1><p class="muted">This link may have expired or already been used.</p>`))
-    return
-  }
-
-  if (store.isUsed(r)) {
-    res.status(410).send(htmlPage('Request used', `<h1>Already used</h1><p class="muted">This secret request has already been completed.</p>`))
-    return
-  }
-
   const secretValue = typeof req.body?.secretValue === 'string' ? String(req.body.secretValue) : ''
   if (!secretValue) {
     res.status(400).send(htmlPage('Invalid submission', `<h1>Invalid submission</h1><p class="muted">Secret value cannot be empty.</p>`))
     return
   }
 
+  // Atomically check and mark used before storing to prevent race conditions
+  const r = store.tryMarkUsed(id)
+  if (!r) {
+    res.status(410).send(htmlPage('Request unavailable', `<h1>Request unavailable</h1><p class="muted">This link may have expired or already been used.</p>`))
+    return
+  }
+
   try {
     await storage.set(r.secretName, secretValue)
-    store.markUsed(id)
     res.status(200).send(htmlPage('Stored', `<h1>Secret stored</h1><p class="muted">Stored <code>${escapeHtml(r.secretName)}</code>. You can close this page.</p>`))
   } catch {
     res.status(500).send(htmlPage('Error', `<h1>Failed to store secret</h1><p class="muted">Internal error while storing the secret.</p>`))
