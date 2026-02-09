@@ -28,7 +28,7 @@ export interface SystemdCredsOptions {
 
 export class SystemdCredsProvider implements StorageProvider {
   private dir: string
-  private withKey: SystemdCredsOptions['withKey']
+  private withKey: NonNullable<SystemdCredsOptions['withKey']>
   private userScoped: boolean
   private setupComplete = false
   private readonly safeNamePattern = /^[A-Z][A-Z0-9_]*$/
@@ -72,9 +72,6 @@ export class SystemdCredsProvider implements StorageProvider {
       )
       return stdout.toString()
     } catch (err: any) {
-      // Not found
-      if (err?.code === 'ENOENT') return null
-
       const stderr = (err?.stderr ?? '').toString()
       // systemd-creds returns non-zero if file missing/unreadable
       if (stderr.includes('No such file') || stderr.toLowerCase().includes('no such file')) {
@@ -96,7 +93,6 @@ export class SystemdCredsProvider implements StorageProvider {
   }
 
   async list(): Promise<string[]> {
-    await this.ensureDir(false)
     try {
       const files = await fs.readdir(this.dir)
       return files
