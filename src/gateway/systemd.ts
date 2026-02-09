@@ -7,14 +7,13 @@
 
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { SECRET_NAME_PATTERN } from '../config/schemas.js'
 
 const execFileAsync = promisify(execFile)
-
-const ENV_VAR_PATTERN = /^[A-Z][A-Z0-9_]*$/
 const SYSTEMD_SERVICE_PATTERN = /^[a-zA-Z0-9_.@:-]+\.service$/
 
 function sanitizeEnvVars(envVars: string[]): string[] {
-  const invalid = envVars.filter(v => !ENV_VAR_PATTERN.test(v))
+  const invalid = envVars.filter(v => !SECRET_NAME_PATTERN.test(v))
   if (invalid.length > 0) {
     throw new SystemdError(`Invalid environment variable names: ${invalid.join(', ')}`)
   }
@@ -51,13 +50,12 @@ export interface ServiceStatus {
 }
 
 export class SystemdError extends Error {
-  constructor(
-    message: string,
-    public readonly service?: string,
-    public readonly cause?: unknown
-  ) {
-    super(message)
+  public readonly service?: string
+
+  constructor(message: string, service?: string, cause?: unknown) {
+    super(message, cause !== undefined ? { cause } : undefined)
     this.name = 'SystemdError'
+    this.service = service
   }
 }
 

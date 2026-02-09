@@ -6,7 +6,7 @@ export function hasSystemdUserSession(): boolean {
   }
 
   try {
-    execSync('systemctl --user show-environment', { stdio: 'ignore' })
+    execSync('systemctl --user show-environment', { stdio: 'ignore', timeout: 5_000 })
     return true
   } catch {
     return false

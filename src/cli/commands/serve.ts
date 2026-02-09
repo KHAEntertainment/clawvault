@@ -25,7 +25,6 @@ export const serveCommand = new Command('serve')
   .option('--cert <path>', 'TLS certificate path')
   .option('--key <path>', 'TLS key path')
   .action(async (options: ServeOptions) => {
-    const storage = await createStorage()
     const port = parseInt(options.port, 10)
 
     // Validate TLS options
@@ -34,6 +33,31 @@ export const serveCommand = new Command('serve')
       process.exit(1)
     }
 
+    // Import web module before creating storage to avoid wasted work
+    let webModule: Awaited<typeof import('../../web/index.js')>
+    try {
+      webModule = await import('../../web/index.js')
+    } catch (error: unknown) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as { code?: string }).code)
+          : ''
+
+      if (code === 'ERR_MODULE_NOT_FOUND') {
+        console.log('')
+        console.log(chalk.yellow('Web UI module not found.'))
+        console.log(chalk.gray('For now, use the CLI commands:'))
+        console.log(chalk.gray(`  clawvault add <name>    - Add a secret`))
+        console.log(chalk.gray(`  clawvault list          - List secrets`))
+        console.log(chalk.gray(`  clawvault rotate <name> - Update a secret`))
+        return
+      }
+
+      throw error
+    }
+
+    const storage = await createStorage()
+
     console.log(chalk.cyan('ClawVault Web UI'))
     console.log(chalk.gray('Secrets are submitted directly to the encrypted keyring.'))
     console.log('')
@@ -41,29 +65,6 @@ export const serveCommand = new Command('serve')
     console.log(chalk.gray(`Starting server on ${options.host}:${port}`))
 
     try {
-      // Try to import web module (may not exist in partial builds)
-      let webModule: Awaited<typeof import('../../web/index.js')>
-      try {
-        webModule = await import('../../web/index.js')
-      } catch (error: unknown) {
-        const code =
-          error && typeof error === 'object' && 'code' in error
-            ? String((error as { code?: string }).code)
-            : ''
-
-        if (code === 'ERR_MODULE_NOT_FOUND') {
-          console.log('')
-          console.log(chalk.yellow('Web UI module not found.'))
-          console.log(chalk.gray('For now, use the CLI commands:'))
-          console.log(chalk.gray(`  clawvault add <name>    - Add a secret`))
-          console.log(chalk.gray(`  clawvault list          - List secrets`))
-          console.log(chalk.gray(`  clawvault rotate <name> - Update a secret`))
-          return
-        }
-
-        throw error
-      }
-
       await webModule.startServer(storage, {
         port,
         host: options.host,

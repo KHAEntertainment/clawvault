@@ -91,7 +91,7 @@ export async function submitSecret(
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error(`Failed to store secret metadata for ${secretName}: ${message}`)
+    console.error(`Failed to store secret "${secretName}": ${message}`)
 
     // Never include provider/internal details in client-facing responses
     res.status(500).json({

@@ -25,8 +25,9 @@ describe('LinuxKeyringProvider', () => {
     it('should store a secret using secret-tool', async () => {
       mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
         const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
-        cb(null, '', '')
-        return { stdin: { write: jest.fn(), end: jest.fn() } }
+        const stdin = { write: jest.fn(), end: jest.fn() }
+        process.nextTick(() => cb(null, '', ''))
+        return { stdin }
       })
 
       await provider.set('OPENAI_API_KEY', 'sk-test-key-12345')
@@ -46,7 +47,7 @@ describe('LinuxKeyringProvider', () => {
       const end = jest.fn()
       mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
         const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
-        cb(null, '', '')
+        process.nextTick(() => cb(null, '', ''))
         return { stdin: { write, end } }
       })
 
@@ -57,11 +58,21 @@ describe('LinuxKeyringProvider', () => {
       expect(end).toHaveBeenCalled()
     })
 
+    it('should reject when stdin is unavailable', async () => {
+      mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
+        const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
+        process.nextTick(() => cb(null, '', ''))
+        return { stdin: null, kill: jest.fn() }
+      })
+
+      await expect(provider.set('TEST_SECRET', 'value')).rejects.toThrow('stdin unavailable for secret-tool')
+    })
+
     it('should propagate errors from secret-tool', async () => {
       const error = new Error('secret-tool: command not found')
       mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
         const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
-        cb(error, '', '')
+        process.nextTick(() => cb(error, '', ''))
         return { stdin: { write: jest.fn(), end: jest.fn() } }
       })
 
@@ -126,6 +137,10 @@ describe('LinuxKeyringProvider', () => {
       await expect(provider.set('bad-name', 'value')).rejects.toThrow('Invalid secret name')
       await expect(provider.get('bad-name')).rejects.toThrow('Invalid secret name')
       await expect(provider.delete('bad-name')).rejects.toThrow('Invalid secret name')
+    })
+
+    it('should reject invalid secret names in has()', async () => {
+      await expect(provider.has('bad-name')).rejects.toThrow('Invalid secret name')
     })
   })
 })

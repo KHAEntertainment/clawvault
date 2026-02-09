@@ -10,18 +10,13 @@ const EXEC_MAX_BUFFER_BYTES = 1 * 1024 * 1024
 
 function execFileCommand(file: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(
-      file,
-      args,
-      { timeout: EXEC_TIMEOUT_MS, maxBuffer: EXEC_MAX_BUFFER_BYTES },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(error)
-          return
-        }
-        resolve({ stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
+    execFile(file, args, { timeout: EXEC_TIMEOUT_MS, maxBuffer: EXEC_MAX_BUFFER_BYTES }, (error, stdout, stderr) => {
+      if (error) {
+        reject(error)
+        return
       }
-    )
+      resolve({ stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
+    })
   })
 }
 
@@ -61,10 +56,14 @@ export class LinuxKeyringProvider implements StorageProvider {
         }
       )
 
-      if (child.stdin) {
-        child.stdin.write(value)
-        child.stdin.end()
+      if (!child.stdin) {
+        child.kill()
+        reject(new Error('stdin unavailable for secret-tool'))
+        return
       }
+
+      child.stdin.write(value)
+      child.stdin.end()
     })
   }
 
@@ -133,7 +132,7 @@ export class LinuxKeyringProvider implements StorageProvider {
    */
   private parseGdbusOutput(output: string): string[] {
     const names: string[] = []
-    if (!output || output === '') {
+    if (!output) {
       return names
     }
 
