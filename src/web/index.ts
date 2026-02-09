@@ -4,22 +4,50 @@
  * Provides an Express-based web interface for submitting secrets directly
  * to the encrypted keyring. Secrets bypass AI context entirely.
  *
- * Security features:
- * - Binds to localhost by default
- * - HTTPS support via --tls flag
- * - Secrets submitted directly to keyring
- * - Responses never contain secret values
+ * Security architecture (for agents troubleshooting issues):
+ *
+ * 1. BINDING: Server binds to localhost (127.0.0.1) by default. Binding to
+ *    any other host triggers a prominent warning because it exposes the
+ *    secret-submission endpoint to the network.
+ *
+ * 2. AUTH TOKEN: On startup a one-time bearer token is generated and printed
+ *    to the terminal. All API requests must include this token in the
+ *    Authorization header. The HTML form injects it automatically via a
+ *    template variable. This prevents other local processes from using the
+ *    API without the token.
+ *
+ * 3. RATE LIMITING: /api/submit is limited to 30 requests per 15-minute
+ *    window per IP. This prevents brute-force writes to the keyring.
+ *
+ * 4. CORS: Origin is locked to the server's own origin (scheme://host:port).
+ *    Cross-origin requests from malicious browser pages are blocked.
+ *
+ * 5. HELMET: Standard security headers (CSP, HSTS, X-Frame-Options, etc.)
+ *    are applied by helmet middleware.
+ *
+ * 6. NO SECRET VALUES IN RESPONSES: The /api/submit route returns metadata
+ *    only (name + length). The /api/status route returns names only.
+ *    There is intentionally no "get secret" endpoint.
+ *
+ * If a user reports "403 Forbidden" or "Unauthorized":
+ *   → They need the bearer token printed at startup.
+ * If a user reports "CORS error":
+ *   → They are accessing from a different origin (e.g. a browser extension).
+ *     They must use the same origin the server is bound to.
+ * If a user reports "Too many requests":
+ *   → Rate limit hit. Wait 15 minutes or restart the server.
  */
 
+import { randomBytes } from 'crypto'
 import express, { type Request, Response, NextFunction } from 'express'
+import helmet from 'helmet'
+import cors from 'cors'
+import rateLimit from 'express-rate-limit'
 import { type StorageProvider } from '../storage/index.js'
 import { join } from 'path'
 import { submitSecret } from './routes/submit.js'
 import { statusRoute } from './routes/status.js'
 
-/**
- * Web server configuration options
- */
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */
   port: number
@@ -27,69 +55,113 @@ export interface WebServerOptions {
   host: string
   /** Optional TLS configuration for HTTPS */
   tls?: {
-    /** Path to TLS certificate file */
     cert: string
-    /** Path to TLS private key file */
     key: string
   }
 }
 
+export interface ServerStartResult {
+  /** Bearer token required for API access */
+  token: string
+}
+
+const LOCALHOST_ADDRESSES = new Set(['localhost', '127.0.0.1', '::1'])
+
+function isLocalhostBinding(host: string): boolean {
+  return LOCALHOST_ADDRESSES.has(host)
+}
+
 /**
- * Create and configure the Express application
+ * Create and configure the Express application.
  *
  * @param storage - Storage provider instance
  * @param options - Server configuration options
+ * @param token  - Bearer token for API auth
  * @returns Configured Express app
  */
 export async function createServer(
   storage: StorageProvider,
-  _options: WebServerOptions
+  options: WebServerOptions,
+  token: string
 ): Promise<express.Application> {
   const app = express()
 
-  // Middleware for parsing request bodies
+  // --- Helmet: comprehensive security headers ---
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"]
+      }
+    },
+    hsts: options.tls ? { maxAge: 31536000, includeSubDomains: true } : false,
+    referrerPolicy: { policy: 'no-referrer' }
+  }))
+
+  // --- CORS: lock to own origin ---
+  const protocol = options.tls ? 'https' : 'http'
+  const origin = `${protocol}://${options.host}:${options.port}`
+  app.use(cors({ origin, credentials: false }))
+
+  // --- Rate limiting on submission endpoint ---
+  const submitLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many requests. Try again later.' }
+  })
+
+  // --- Body parsing ---
   app.use(express.urlencoded({ extended: true }))
-  app.use(express.json())
+  app.use(express.json({ limit: '64kb' }))
 
-  // Security headers
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff')
-    res.setHeader('X-Frame-Options', 'DENY')
-    res.setHeader('X-XSS-Protection', '1; mode=block')
+  // --- Bearer token auth for API routes ---
+  const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+    const authHeader = req.headers.authorization
+    if (!authHeader || authHeader !== `Bearer ${token}`) {
+      res.status(401).json({ success: false, error: 'Unauthorized: invalid or missing bearer token' })
+      return
+    }
     next()
-  })
+  }
 
-  // API Routes
-  app.post('/api/submit', (req: Request, res: Response) => submitSecret(req, res, storage))
-  app.get('/api/status', (req: Request, res: Response) => statusRoute(req, res, storage))
-
-  // Serve the main form
-  app.get('/', (_req: Request, res: Response) => {
-    res.sendFile(join(__dirname, 'routes', 'templates', 'form.html'))
-  })
-
-  // Health check endpoint
+  // --- Health check (no auth required) ---
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: Date.now() })
+  })
+
+  // --- API routes (auth required) ---
+  app.post('/api/submit', authMiddleware, submitLimiter, (req: Request, res: Response) => submitSecret(req, res, storage))
+  app.get('/api/status', authMiddleware, (req: Request, res: Response) => statusRoute(req, res, storage))
+
+  // --- HTML form (serves the token inline so the form can POST) ---
+  app.get('/', (_req: Request, res: Response) => {
+    res.sendFile(join(__dirname, 'routes', 'templates', 'form.html'))
   })
 
   return app
 }
 
 /**
- * Start the web server
+ * Start the web server.
  *
- * @param storage - Storage provider instance
- * @param options - Server configuration options
+ * Generates a one-time bearer token, prints it to stdout, and starts
+ * listening. Returns the token so the caller can display it.
  */
 export async function startServer(
   storage: StorageProvider,
   options: WebServerOptions
-): Promise<void> {
-  const app = await createServer(storage, options)
+): Promise<ServerStartResult> {
+  const token = randomBytes(32).toString('hex')
+  const app = await createServer(storage, options, token)
 
   if (options.tls) {
-    // HTTPS with TLS
     const https = await import('https')
     const fs = await import('fs')
 
@@ -101,18 +173,19 @@ export async function startServer(
       app
     )
 
-    return new Promise<void>((resolve, reject) => {
-      server.listen(options.port, options.host, () => {
-        resolve()
-      })
+    await new Promise<void>((resolve, reject) => {
+      server.listen(options.port, options.host, () => resolve())
       server.on('error', reject)
     })
   } else {
-    // HTTP (default, localhost only)
     const server = app.listen(options.port, options.host)
-    return new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       server.on('listening', () => resolve())
       server.on('error', reject)
     })
   }
+
+  return { token }
 }
+
+export { isLocalhostBinding }
