@@ -6,18 +6,10 @@
  */
 
 import { SystemdManager, SystemdError, createSystemdManager } from '../../../src/gateway/systemd'
-import { existsSync } from 'fs'
-import { join } from 'path'
+import { hasSystemdUserSession } from '../../helpers/systemd'
 
-// Skip all tests if not on Linux with systemd
-const xdgRuntimeDir = process.env.XDG_RUNTIME_DIR
-const hasUserBus =
-  process.platform === 'linux' &&
-  typeof xdgRuntimeDir === 'string' &&
-  xdgRuntimeDir.length > 0 &&
-  existsSync(join(xdgRuntimeDir, 'bus'))
-
-const describeSystemd = hasUserBus ? describe : describe.skip
+// Skip all tests when no systemd user session is available
+const describeSystemd = hasSystemdUserSession() ? describe : describe.skip
 
 describeSystemd('SystemdManager', () => {
   let systemd: SystemdManager

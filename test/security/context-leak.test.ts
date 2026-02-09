@@ -17,6 +17,19 @@ import { ConfigSchema } from '../../src/config/schemas'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
+jest.mock('inquirer', () => ({
+  __esModule: true,
+  default: {
+    prompt: jest.fn()
+  }
+}))
+
+jest.mock('chalk', () => ({
+  __esModule: true,
+  default: new Proxy({}, { get: () => (text: string) => text })
+}))
+
+
 // Mock the platform detection to use Linux provider
 jest.mock('../../src/storage/platform', () => ({
   detectPlatform: async () => ({
