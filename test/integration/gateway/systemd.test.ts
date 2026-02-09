@@ -21,24 +21,19 @@ describeSystemd('SystemdManager', () => {
 
   describe('importEnvironment', () => {
     it('should import environment variables', async () => {
-      // Set up test environment variables
       process.env.CLAWVAULT_TEST_VAR_1 = 'test-value-1'
       process.env.CLAWVAULT_TEST_VAR_2 = 'test-value-2'
 
-      await systemd.importEnvironment(['CLAWVAULT_TEST_VAR_1', 'CLAWVAULT_TEST_VAR_2'])
+      await expect(
+        systemd.importEnvironment(['CLAWVAULT_TEST_VAR_1', 'CLAWVAULT_TEST_VAR_2'])
+      ).resolves.toBeUndefined()
 
-      // If we get here without throwing, the import succeeded
-      expect(true).toBe(true)
-
-      // Clean up
       delete process.env.CLAWVAULT_TEST_VAR_1
       delete process.env.CLAWVAULT_TEST_VAR_2
     })
 
     it('should handle empty environment array', async () => {
-      // Should not throw
-      await systemd.importEnvironment([])
-      expect(true).toBe(true)
+      await expect(systemd.importEnvironment([])).resolves.toBeUndefined()
     })
 
     it('should throw SystemdError on failure', async () => {

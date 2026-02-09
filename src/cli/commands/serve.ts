@@ -32,7 +32,6 @@ export const serveCommand = new Command('serve')
   .option('--cert <path>', 'TLS certificate path')
   .option('--key <path>', 'TLS key path')
   .action(async (options: ServeOptions) => {
-    const storage = await createStorage()
     const port = parseInt(options.port, 10)
 
     if (options.tls && (!options.cert || !options.key)) {
@@ -40,7 +39,7 @@ export const serveCommand = new Command('serve')
       process.exit(1)
     }
 
-    // --- Network exposure warning ---
+    // Import web module before creating storage to avoid wasted work
     let webModule: Awaited<typeof import('../../web/index.js')>
     try {
       webModule = await import('../../web/index.js')
@@ -62,6 +61,8 @@ export const serveCommand = new Command('serve')
 
       throw error
     }
+
+    const storage = await createStorage()
 
     if (!webModule.isLocalhostBinding(options.host)) {
       console.log('')

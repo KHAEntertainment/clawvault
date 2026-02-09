@@ -71,28 +71,18 @@ describe('Security: Context Leak Prevention', () => {
   })
 
   describe('Error messages never contain secret values', () => {
-    it('should sanitize errors in storage.set()', async () => {
-      const _provider = new LinuxKeyringProvider()
-      const _secretName = 'TEST_API_KEY'
-      const secretValue = 'super-secret-value-12345'
+    it('should sanitize errors in storage.set()', () => {
+      // Verify that the LinuxKeyringProvider source code never interpolates
+      // secret values into error messages or log output.
+      const providerSource = readFileSync(
+        join(__dirname, '../../src/storage/providers/linux.ts'),
+        'utf-8'
+      )
 
-      // Mock execa to throw an error
-      jest.mock('execa', () => ({
-        command: jest.fn(() => {
-          throw new Error(`Command failed: secret-tool store --label="${secretValue}"`)
-        })
-      }))
-
-      // Even if underlying command fails with value in error,
-      // the provider should sanitize it
-      try {
-        // This would normally call secret-tool, but we're testing the contract
-        expect(true).toBe(true)
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        // Error should not contain the secret value
-        expect(errorMessage).not.toContain(secretValue)
-      }
+      // The provider should never template a 'value' variable into Error messages
+      expect(providerSource).not.toMatch(/new Error\(.*\bvalue\b/)
+      // The provider should never log or console.log/error the value
+      expect(providerSource).not.toMatch(/console\.\w+\(.*\bvalue\b/)
     })
 
     it('should sanitize errors in storage.get()', async () => {
