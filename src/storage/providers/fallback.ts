@@ -51,15 +51,33 @@ export class FallbackProvider implements StorageProvider {
     if (this.warningEmitted) return
     this.warningEmitted = true
 
+    const platform = process.platform
+
     console.warn('')
     console.warn('╔════════════════════════════════════════════════════════════╗')
     console.warn('║  WARNING: Using fallback encrypted file storage          ║')
     console.warn('║  This is less secure than platform keyring storage.       ║')
-    console.warn('║  Install your platform keyring tools for better security.  ║')
     console.warn('║                                                            ║')
-    console.warn('║  Linux:   libsecret-tools (apt install libsecret-tools)    ║')
-    console.warn('║  macOS:   Built-in keychain (no installation needed)       ║')
-    console.warn('║  Windows: Built-in Credential Manager (no install needed)  ║')
+
+    if (platform === 'linux') {
+      console.warn('║  Install libsecret-tools for secure keyring storage:     ║')
+      console.warn('║                                                            ║')
+      console.warn('║    Debian/Ubuntu: sudo apt install libsecret-tools   ║')
+      console.warn('║    Fedora/RHEL:    sudo dnf install libsecret          ║')
+      console.warn('║    Arch Linux:     sudo pacman -S libsecret            ║')
+      console.warn('║                                                            ║')
+      console.warn('║  After installing, re-run your ClawVault command.       ║')
+    } else if (platform === 'darwin') {
+      console.warn('║  macOS keychain support requires no installation.        ║')
+      console.warn('║  If you see this warning, your keychain may be locked   ║')
+      console.warn('║  or the "security" command is unavailable.             ║')
+    } else if (platform === 'win32') {
+      console.warn('║  Windows Credential Manager requires no installation.     ║')
+      console.warn('║  If you see this warning, cmdkey.exe may be missing.   ║')
+    }
+
+    console.warn('║                                                            ║')
+    console.warn('║  Run "clawvault doctor" to verify your installation.     ║')
     console.warn('╚════════════════════════════════════════════════════════════╝')
     console.warn('')
   }

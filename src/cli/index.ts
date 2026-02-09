@@ -13,6 +13,7 @@ import { removeCommand } from './commands/remove.js'
 import { rotateCommand } from './commands/rotate.js'
 import { serveCommand } from './commands/serve.js'
 import { openclawCommand } from './commands/openclaw.js'
+import { doctorCommand } from './commands/doctor.js'
 
 const program = new Command()
 
@@ -28,6 +29,7 @@ program.addCommand(removeCommand)
 program.addCommand(rotateCommand)
 program.addCommand(serveCommand)
 program.addCommand(openclawCommand)
+program.addCommand(doctorCommand)
 
 // Parse and execute
 program.parse()

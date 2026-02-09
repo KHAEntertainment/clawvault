@@ -11,11 +11,67 @@ Secure secret management for OpenClaw that stores secrets in OS-native encrypted
 
 ## Installation
 
+### Quick Install
+
 ```bash
 npm install -g clawvault
 ```
 
-Or build from source:
+### Verify Installation
+
+```bash
+clawvault --version
+# Output: 0.1.0
+```
+
+### Check Dependencies
+
+After installation, run the doctor command to verify system dependencies:
+
+```bash
+clawvault doctor
+```
+
+**Expected output:**
+```
+✓ GNOME Keyring storage    (Linux) / ✓ macOS Keychain (macOS) / ✓ Credential Manager (Windows)
+✓ Systemd integration (optional)
+```
+
+**If dependencies are missing:**
+```
+✗ GNOME Keyring storage
+  Installation: Debian/Ubuntu: sudo apt install libsecret-tools
+```
+
+### Installing System Dependencies
+
+⚠️ **Important:** System dependency installation requires `sudo` and must be done manually.
+
+**Why?** OpenClaw typically runs as a non-privileged user. We do not automate sudo commands for security reasons. Install dependencies using your admin account.
+
+**Linux (libsecret-tools):**
+```bash
+# Debian/Ubuntu
+sudo apt install libsecret-tools
+
+# Fedora/RHEL
+sudo dnf install libsecret
+
+# Arch Linux
+sudo pacman -S libsecret
+```
+
+**macOS:**
+- Built-in keychain - no installation needed
+- If you see warnings, your keychain may be locked
+
+**Windows:**
+- Built-in Credential Manager - no installation needed
+
+After installing, run `clawvault doctor` again to verify.
+
+### Build from Source
 
 ```bash
 git clone https://github.com/openclaw/clawvault.git
@@ -28,6 +84,9 @@ npm link
 ## Quick Start
 
 ```bash
+# Check dependencies (recommended after install)
+clawvault doctor
+
 # Add a secret (prompts for value securely)
 clawvault add OPENAI_API_KEY
 
@@ -42,6 +101,9 @@ clawvault rotate OPENAI_API_KEY
 
 # Start web UI for secret submission
 clawvault serve --port 3000
+
+# Migrate OpenClaw plaintext auth-profiles to encrypted storage
+clawvault openclaw migrate --apply
 ```
 
 ## How It Works
