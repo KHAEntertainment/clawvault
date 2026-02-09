@@ -1,143 +1,210 @@
 # ClawVault Security Model
 
-## Overview
+This document describes ClawVault's security architecture, threat model, and
+troubleshooting guidance. It is intended for both human developers and AI agents
+that operate on or integrate with ClawVault.
 
-ClawVault is designed with a security-first approach to secret management. The core principle is that **secret values NEVER enter AI context** - they are stored in OS-native encrypted keyrings and injected directly into the OpenClaw Gateway process environment.
+---
 
-## What We Protect
+## Core Invariant
 
-### At-Rest Encryption
-Secrets are stored encrypted using platform-native keyrings:
+**Secret values must never enter AI-visible context.**
 
-- **Linux**: GNOME Keyring / libsecret (encrypted with user login password)
-- **macOS**: Keychain Services (encrypted with hardware Secure Enclave when available)
-- **Windows**: Credential Manager (encrypted with DPAPI - tied to user credentials)
-
-### AI Context Isolation
-The primary security guarantee of ClawVault is that secret values bypass AI model context entirely:
-
-1. **CLI**: Uses hidden input (`inquirer` password type) - secrets never visible in terminal
-2. **Web UI**: Submits directly to keyring - responses contain only metadata (name, length)
-3. **API**: `get()` method returns values only for internal gateway injection
-4. **Logs**: Audit logs contain metadata only (action, secret name, timestamp, success/failure)
-
-### Config File Safety
-The configuration file (`~/.config/clawvault/secrets.json`) contains only:
-- Secret definitions (metadata)
-- Validation patterns
-- Gateway service names
-
-**Never** actual secret values.
-
-### Shell History Protection
-CLI commands use interactive prompts with hidden input, preventing secrets from appearing in:
-- Shell history (`.bash_history`, `.zhistory`)
-- Process listings (`ps aux`)
-- Terminal scrollback
-
-## What We Don't Protect
-
-### Gateway Process Memory
-Once secrets are injected into the OpenClaw Gateway environment, they can be exposed via:
-- Process memory inspection (`/proc/*/environ`, `gdb`)
-- Core dumps
-- Process debugging tools
-
-**Mitigation**: Limit gateway process debugging access. Use filesystem permissions on audit logs.
-
-### Network Transmission
-The Web UI defaults to HTTP (localhost only). Without TLS:
-- Secrets can be intercepted on the network
-- Man-in-the-middle attacks are possible
-
-**Mitigation**: Always use `--tls` flag when exposing web UI beyond localhost. Run web UI on `localhost` only for development.
-
-### Fallback Storage
-When platform keyring tools are unavailable, ClawVault falls back to encrypted file storage:
-- File: `~/.clawvault/secrets.enc.json`
-- Encryption: AES-256-GCM with scrypt-derived key
-- Weaker than platform keyring (depends on file permissions)
-
-**Mitigation**: Install platform keyring tools for production use. Fallback emits a prominent warning.
-
-### System-Level Access
-An attacker with root/admin access can:
-- Access keyring directly (if user is logged in)
-- Read encrypted files and derive encryption keys
-- Attach debugger to gateway process
-
-**Mitigation**: ClawVault assumes a trusted system. It protects against accidental exposure and AI context leakage, not determined attackers with system access.
+This means secret values must never appear in:
+- Error messages, thrown exceptions, or rejection reasons
+- CLI stdout/stderr output
+- HTTP response bodies
+- Log output (console.log, console.error, console.warn)
+- Test output or assertion messages
+- Configuration files or environment variable definitions visible to agents
 
 ## Threat Model
 
-### Protected Against
+### Threat 1: Command Injection via Shell Interpolation
 
-| Threat | Protection Mechanism |
-|--------|---------------------|
-| Secret values in AI logs | Secrets never passed to AI; only metadata exchanged |
-| Secret values in config files | Values stored only in encrypted keyring |
-| Shell history leakage | Interactive hidden input for all secret entry |
-| Log aggregation capturing secrets | Audit logging records metadata only |
-| Accidental terminal exposure | Password masking in CLI prompts |
-| Debug output containing secrets | Error messages never include secret values |
+**Risk:** If secret values or names are interpolated into shell command strings,
+an attacker who controls a secret value could execute arbitrary commands.
 
-### Not Protected Against
+**Mitigation:**
+- All storage providers use `execFile()` with argument arrays, not `exec()`.
+- `execFile` bypasses the shell entirely -- arguments are passed as C-level argv
+  entries, so metacharacters like `$()`, backticks, pipes, and semicolons have
+  no special meaning.
+- Secret names are validated against `/^[A-Z][A-Z0-9_]*$/` before any command
+  is constructed. This prevents injection via crafted names.
 
-| Threat | Limitation |
-|--------|------------|
-| Root user accessing keyring | Platform keyrings accessible to authenticated user |
-| Memory dump of gateway process | Secrets exist in process environment during runtime |
-| Network sniffing without TLS | Web UI defaults to HTTP; use `--tls` for HTTPS |
-| Physical machine access | Attacker with physical access can extract secrets |
-| Compromised gateway code | Malicious gateway code could exfiltrate secrets |
+**Verification:** The tests in `test/unit/storage/` verify that dangerous
+characters in secret values pass through safely. The context-leak tests in
+`test/security/` scan source files for patterns that could leak values.
 
-## Security Best Practices
+### Threat 2: Supply Chain Attacks (npx, arbitrary code execution)
 
-### For Users
+**Risk:** The "confidant" plugin executes `npx @aiconnect/confidant`, which
+downloads and runs arbitrary code from npm at runtime. A compromised package
+could exfiltrate secrets.
 
-1. **Always use TLS in production**: Enable `--tls` when running web UI on network-accessible interfaces
-2. **Limit web UI binding**: Use `--host localhost` unless network access is required
-3. **Protect audit logs**: `~/.clawvault/audit.log` contains access metadata; restrict file permissions
-4. **Rotate secrets regularly**: Use `clawvault rotate` to update secret values
-5. **Review secret definitions**: Periodically audit `~/.config/clawvault/secrets.json`
+**Mitigation:**
+- ClawVault **never** uses `npx`, `npm exec`, or any runtime code download.
+- All external commands are OS-provided binaries with known paths:
+  - Linux: `secret-tool`, `gdbus`, `systemctl`
+  - macOS: `security`
+  - Windows: `cmdkey`, `powershell`
+- Dependencies are locked in `package-lock.json`. Use `npm ci` (not `npm install`)
+  in CI to ensure reproducible builds.
+- Run `npm run audit:security` to check for known vulnerabilities.
 
-### For Developers
+### Threat 3: Network Exposure of Secret Submission Endpoint
 
-1. **Never log secret values**: Use audit logging for metadata only
-2. **Never return `get()` results** to public APIs: Internal use only for gateway injection
-3. **Validate all inputs**: Prevent command injection in keyring operations
-4. **Use hidden input**: All CLI secret entry must use password-type prompts
-5. **Test for leaks**: Run `test/security/context-leak.test.ts` before committing
+**Risk:** The web UI starts an HTTP server that accepts secret submissions. If
+exposed to the network (via tunneling, binding to 0.0.0.0, or port forwarding),
+any network attacker could submit or enumerate secrets.
 
-## Security Audit
+**Mitigation:**
+- Server binds to `localhost` (127.0.0.1) by default.
+- Binding to any non-localhost address triggers a prominent security warning.
+- **Bearer token authentication**: A cryptographically random 64-character token
+  is generated at startup and printed to the terminal. All API requests require
+  `Authorization: Bearer <token>`.
+- **Rate limiting**: `/api/submit` is limited to 30 requests per 15-minute window.
+- **CORS**: Origin is locked to the server's own `scheme://host:port`. Cross-origin
+  requests from malicious browser pages are blocked.
+- **Helmet**: Comprehensive security headers (CSP, X-Frame-Options, X-Content-Type-Options,
+  Referrer-Policy, etc.) are applied.
+- **No secret retrieval endpoint**: There is intentionally no API to read secret
+  values. Only metadata (names, counts) is returned.
 
-Run the security audit to verify no secret value leakage:
+### Threat 4: Local Process Attacks
 
-```bash
-# Ensure no secret values in logs
-grep -r "console.log.*value" src/
-grep -r "console.log.*secret" src/
+**Risk:** Other processes running as the same user could access the keyring or
+the web server's API.
 
-# Ensure get() not exported in public API
-grep -r "export.*get" src/
+**Mitigation:**
+- Platform keyrings (macOS Keychain, GNOME Keyring, Windows Credential Manager)
+  are session-locked and require user authentication for access.
+- The fallback encrypted file provider uses file permissions (mode 0600) and
+  machine-specific key derivation to limit access.
+- The web server's bearer token is only printed to the terminal; other local
+  processes would need to read the terminal output to obtain it.
 
-# Ensure no hardcoded secrets
-grep -r "sk-" src/
-grep -r "Bearer" src/
+### Threat 5: Weak Key Derivation in Fallback Provider
 
-# Run security tests
-npm test test/security/
+**Risk:** The fallback provider (used when no keyring is available) derives its
+encryption key from a machine identifier. If the machine-id is predictable
+(e.g., in Docker containers), the key is weaker.
+
+**Mitigation:**
+- The fallback provider reads `/etc/machine-id` (Linux) as primary key material.
+- A 32-byte random salt is generated on first use and stored in `~/.clawvault/.salt`
+  with mode 0600.
+- If no machine-id is available, a username-based fallback is used with an
+  explicit warning.
+- The fallback provider always emits a prominent warning encouraging users to
+  install platform keyring tools.
+
+---
+
+## Architecture Reference
+
+### Storage Providers
+
+| Provider | Platform | Backend | Command | Injection-Safe |
+|----------|----------|---------|---------|----------------|
+| `LinuxKeyringProvider` | Linux | GNOME Keyring | `secret-tool`, `gdbus` | Yes (execFile) |
+| `MacOSKeychainProvider` | macOS | Keychain | `security` | Yes (execFile) |
+| `WindowsCredentialManager` | Windows | Credential Manager | `cmdkey`, `powershell` | Yes (execFile) |
+| `FallbackProvider` | Any | Encrypted file | None (crypto only) | N/A |
+
+### Web Server Middleware Stack
+
+```
+Request → Helmet → CORS → Body Parser → Auth (Bearer) → Rate Limiter → Route Handler
 ```
 
-## Responsible Disclosure
+- `helmet`: Security headers (CSP, HSTS, X-Frame-Options, etc.)
+- `cors`: Origin allowlist locked to server's own address
+- `express.json`/`express.urlencoded`: Body parsing with 64KB limit
+- Auth middleware: Validates `Authorization: Bearer <token>` header
+- `express-rate-limit`: 30 requests per 15 minutes on `/api/submit`
 
-If you discover a security vulnerability in ClawVault:
+### Audit System
 
-1. **Do not create a public issue**
-2. Email details to: security@openclaw.dev
-3. Include: description, steps to reproduce, potential impact
-4. Allow 90 days for fix before public disclosure
+`AuditedStorageProvider` wraps any `StorageProvider` and emits structured JSON
+events for every operation. Events contain:
 
-## License
+```json
+{
+  "timestamp": "2026-02-09T12:00:00.000Z",
+  "operation": "set",
+  "secretName": "OPENAI_API_KEY",
+  "success": true
+}
+```
 
-ClawVault is licensed under MIT. See LICENSE file for details.
+Events **never** contain secret values. Audit handler failures are caught and
+silently ignored to prevent audit issues from blocking secret access.
+
+---
+
+## Troubleshooting Guide (For AI Agents)
+
+### "Failed to store secret in macOS Keychain"
+- The `security` CLI returned an error. Check that the user has keychain access.
+- If the error is about a duplicate, the provider handles this automatically.
+- If persistent, the user may need to unlock their keychain: `security unlock-keychain`.
+
+### "Invalid secret name: ..."
+- Secret names must match `/^[A-Z][A-Z0-9_]*$/`.
+- Common mistakes: lowercase letters, hyphens, spaces, leading digits.
+- Example valid names: `OPENAI_API_KEY`, `DB_PASSWORD`, `AWS_SECRET_KEY`.
+
+### "Unauthorized: invalid or missing bearer token"
+- The web server requires a bearer token for all API routes except `/health`.
+- The token is printed to the terminal when the server starts.
+- Include it as: `Authorization: Bearer <token>` in the request header.
+
+### "Too many requests. Try again later."
+- Rate limit hit on `/api/submit` (30 requests per 15-minute window).
+- Wait 15 minutes or restart the server to reset the window.
+
+### "CORS error" in browser
+- The browser is making a cross-origin request from a different origin.
+- The server only allows requests from its own origin (e.g., `http://localhost:3000`).
+- Ensure the browser is accessing the same host:port the server is bound to.
+
+### "WARNING: Using fallback encrypted file storage"
+- No platform keyring tools detected. Install them:
+  - Linux: `apt install libsecret-tools`
+  - macOS: Built-in (should not see this on macOS)
+  - Windows: Built-in (should not see this on Windows)
+
+### "WARNING: Binding to a non-localhost address!"
+- The user passed `--host` with an address other than localhost/127.0.0.1/::1.
+- This exposes the secret submission endpoint to the network.
+- Only appropriate on trusted, firewalled networks with TLS enabled.
+
+### Secret stored but not appearing in gateway environment
+- Check that the secret name in the config matches exactly (case-sensitive).
+- Run `clawvault list` to verify the secret exists in the keyring.
+- Check `systemctl --user show-environment` (Linux) to see injected vars.
+- The gateway injection writes to the process environment and optionally to
+  systemd user sessions.
+
+### Build/test failures after modifying storage or web code
+- Always run: `npm run build && npm test && npm run lint`
+- Pay attention to `test/security/context-leak.test.ts` -- it scans source
+  files for patterns that could leak secret values.
+- Check that no `exec()` calls were introduced (only `execFile` is allowed).
+
+---
+
+## Security Checklist (For PRs)
+
+- [ ] No `exec()` or `execSync()` calls with string interpolation of user/secret data
+- [ ] All new external commands use `execFile()` with argument arrays
+- [ ] Secret values never appear in error messages, logs, or HTTP responses
+- [ ] Secret names validated against `/^[A-Z][A-Z0-9_]*$/` before use
+- [ ] New CLI commands do not call `storage.get()` or expose retrieved values
+- [ ] `test/security/context-leak.test.ts` still passes
+- [ ] Web routes return metadata only (names, lengths, counts)
+- [ ] No `npx`, `npm exec`, or runtime code download introduced
+- [ ] Dependencies added to `package.json` are necessary and from trusted sources

@@ -1,141 +1,221 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
+/**
+ * Windows Credential Manager Provider
+ *
+ * Uses execFile/spawn with argument arrays to avoid shell injection.
+ *
+ * Security model:
+ * - All commands use execFile (no shell) with explicit argument arrays.
+ * - Secret values are NEVER interpolated into command strings.
+ * - For PowerShell operations, arguments are passed as separate argv entries
+ *   to execFile, not concatenated into a -Command string.
+ * - Secret names are validated against a strict allowlist pattern.
+ * - Timeout and buffer limits prevent resource exhaustion.
+ *
+ * Architecture:
+ * - set/delete: use `cmdkey.exe` via execFile with argument arrays.
+ * - get: uses PowerShell's CredRead via a .NET P/Invoke snippet. The script
+ *   is passed as a single -Command argument to execFile('powershell'), which
+ *   is safe because execFile does not invoke cmd.exe shell interpretation.
+ *   The secret name is injected via a `-Name` parameter, not string interpolation.
+ * - list: uses `cmdkey /list` via execFile and parses stdout.
+ *
+ * Troubleshooting (for agents):
+ * - "cmdkey: not recognized" → Windows Credential Manager missing or PATH
+ *   issue. Fallback provider will be used.
+ * - get() returns null when credential does not exist.
+ * - PowerShell execution policy may block scripts; we use -ExecutionPolicy
+ *   Bypass for the inline command.
+ */
+
+import { execFile } from 'child_process'
 import { StorageProvider } from '../interfaces.js'
 
-const execAsync = promisify(exec)
+const TARGET_PREFIX = 'clawvault:'
+const EXEC_TIMEOUT_MS = 10_000
+const EXEC_MAX_BUFFER_BYTES = 1 * 1024 * 1024
+
+const SAFE_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/
+
+function execFileAsync(
+  file: string,
+  args: string[]
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      file,
+      args,
+      { timeout: EXEC_TIMEOUT_MS, maxBuffer: EXEC_MAX_BUFFER_BYTES },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        resolve({ stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
+      }
+    )
+  })
+}
 
 /**
- * Target name used in Windows Credential Manager for all ClawVault secrets
+ * PowerShell script that retrieves a Windows credential by target name.
+ * The target name is passed as $env:CV_TARGET (set via execFile env option)
+ * to avoid any string interpolation in the script body.
  */
-const TARGET = 'clawvault'
+const PS_GET_CREDENTIAL = `
+$ErrorActionPreference = 'Stop'
+$target = $env:CV_TARGET
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class CredManager {
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool CredRead(string target, int type, int flags, out IntPtr cred);
+    [DllImport("advapi32.dll")]
+    public static extern void CredFree(IntPtr cred);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct CREDENTIAL {
+        public int Flags;
+        public int Type;
+        public string TargetName;
+        public string Comment;
+        public long LastWritten;
+        public int CredentialBlobSize;
+        public IntPtr CredentialBlob;
+        public int Persist;
+        public int AttributeCount;
+        public IntPtr Attributes;
+        public string TargetAlias;
+        public string UserName;
+    }
+    public static string GetPassword(string target) {
+        IntPtr credPtr;
+        if (!CredRead(target, 1, 0, out credPtr)) return "";
+        try {
+            CREDENTIAL cred = (CREDENTIAL)Marshal.PtrToStructure(credPtr, typeof(CREDENTIAL));
+            if (cred.CredentialBlobSize > 0) {
+                return Marshal.PtrToStringUni(cred.CredentialBlob, cred.CredentialBlobSize / 2);
+            }
+            return "";
+        } finally { CredFree(credPtr); }
+    }
+}
+'@
+$result = [CredManager]::GetPassword($target)
+[Console]::Out.Write($result)
+`
 
-/**
- * Windows Credential Manager provider using cmdkey CLI
- *
- * Commands:
- * - Store: cmdkey /generic:clawvault /user:SECRET_NAME /pass:VALUE
- * - Get: PowerShell script to retrieve from Windows vault
- * - Delete: cmdkey /delete:clawvault /user:SECRET_NAME
- * - List: cmdkey /list:clawvault
- *
- * Note: Windows Credential Manager stores credentials with these attributes:
- * - /target:clawvault - identifies the ClawVault credential set
- * - /user:SECRET_NAME - the secret name (e.g., OPENAI_API_KEY)
- * - /pass:VALUE - the secret value
- */
 export class WindowsCredentialManager implements StorageProvider {
-  /**
-   * Store a secret in Windows Credential Manager
-   */
-  async set(name: string, value: string): Promise<void> {
-    // Escape special characters for Windows cmd
-    const escapedValue = this.escapeValue(value)
-    const escapedName = this.escapeValue(name)
+  private validateName(name: string): void {
+    if (!SAFE_NAME_PATTERN.test(name)) {
+      throw new Error(`Invalid secret name: ${name}`)
+    }
+  }
 
-    // Delete existing credential first (cmdkey doesn't have update)
-    await this.delete(name)
-
-    // Add new credential
-    await execAsync(`cmdkey /generic:${TARGET} /user:"${escapedName}" /pass:"${escapedValue}"`)
+  private targetFor(name: string): string {
+    return `${TARGET_PREFIX}${name}`
   }
 
   /**
-   * Retrieve a secret from Windows Credential Manager
-   * INTERNAL USE ONLY - never expose to AI context
+   * Store a secret in Windows Credential Manager.
    *
-   * Note: cmdkey cannot retrieve passwords directly.
-   * We use PowerShell with Windows Credential Manager API.
+   * Uses cmdkey with execFile. The /pass argument is a direct argv entry --
+   * execFile does not invoke cmd.exe, so no shell metacharacter expansion.
+   */
+  async set(name: string, value: string): Promise<void> {
+    this.validateName(name)
+    await this.delete(name)
+
+    await execFileAsync('cmdkey', [
+      `/generic:${this.targetFor(name)}`,
+      `/user:${name}`,
+      `/pass:${value}`
+    ])
+  }
+
+  /**
+   * Retrieve a secret from Windows Credential Manager.
+   * INTERNAL USE ONLY - never expose to AI context.
+   *
+   * Uses PowerShell CredRead via .NET P/Invoke. The target name is passed
+   * through the CV_TARGET environment variable, not string interpolation.
    */
   async get(name: string): Promise<string | null> {
+    this.validateName(name)
     try {
-      // Use PowerShell to retrieve credential from Windows vault
-      const psScript = `
-        try {
-          $cred = cmdkey /list:${TARGET} 2>$null | Select-String "Target: ${TARGET}" -Context 0,20
-          if ($cred -match 'user: ${name}') {
-            $lines = $cred -split '\\n'
-            foreach ($line in $lines) {
-              if ($line -match 'pass:\\s*(.+)') {
-                Write-Output $matches[1].Trim()
-                exit
-              }
-            }
+      const { stdout } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        execFile(
+          'powershell',
+          ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-Command', PS_GET_CREDENTIAL],
+          {
+            timeout: EXEC_TIMEOUT_MS,
+            maxBuffer: EXEC_MAX_BUFFER_BYTES,
+            env: { ...process.env, CV_TARGET: this.targetFor(name) }
+          },
+          (error, stdout, stderr) => {
+            if (error) { reject(error); return }
+            resolve({ stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
           }
-        } catch {
-          Write-Output ""
-        }
-      `.replace(/\n/g, ' ').trim()
-
-      const { stdout } = await execAsync(`powershell -Command "${psScript}"`)
-      return stdout.trim() || null
+        )
+      })
+      return stdout || null
     } catch {
       return null
     }
   }
 
   /**
-   * Delete a secret from Windows Credential Manager
+   * Delete a secret from Windows Credential Manager.
    */
   async delete(name: string): Promise<void> {
+    this.validateName(name)
     try {
-      await execAsync(`cmdkey /delete:${TARGET} /user:"${name}" 2>nul`)
+      await execFileAsync('cmdkey', [`/delete:${this.targetFor(name)}`])
     } catch {
       // Ignore errors if credential doesn't exist
     }
   }
 
   /**
-   * List all ClawVault secrets from Windows Credential Manager
-   * Parses cmdkey /list output
+   * List all ClawVault secrets from Windows Credential Manager.
+   * Runs `cmdkey /list` and parses for our target prefix.
    */
   async list(): Promise<string[]> {
     try {
-      const { stdout } = await execAsync(`cmdkey /list:${TARGET} 2>nul`)
-      return this.parseCmdkeyList(stdout)
+      const { stdout } = await execFileAsync('cmdkey', ['/list'])
+      return this.parseCmdkeyOutput(stdout)
     } catch {
       return []
     }
   }
 
-  /**
-   * Check if a secret exists
-   */
   async has(name: string): Promise<boolean> {
     const list = await this.list()
     return list.includes(name)
   }
 
   /**
-   * Parse cmdkey list output to extract secret names
-   * Format: "user: SECRET_NAME"
+   * Parse cmdkey /list output for entries matching our target prefix.
+   *
+   * Output format:
+   *   Target: LegacyGeneric:target=clawvault:SECRET_NAME
+   *   Type: Generic
+   *   User: SECRET_NAME
+   *
+   * We match on the Target line containing our prefix, then extract the name.
    */
-  private parseCmdkeyList(output: string): string[] {
+  private parseCmdkeyOutput(output: string): string[] {
     const names: string[] = []
-    const lines = output.split('\n')
+    if (!output) return names
 
+    const lines = output.split('\n')
     for (const line of lines) {
-      // Match "user: SECRET_NAME" pattern
-      const match = line.match(/user:\s*(.+)/i)
+      const trimmed = line.trim()
+      const match = trimmed.match(/Target:\s*.*?clawvault:([A-Z][A-Z0-9_]*)/i)
       if (match) {
-        names.push(match[1].trim())
+        names.push(match[1])
       }
     }
 
     return names
-  }
-
-  /**
-   * Escape special characters for Windows cmd
-   * Prevents command injection when storing secrets
-   */
-  private escapeValue(value: string): string {
-    // Escape special characters for Windows cmd
-    return value
-      .replace(/"/g, '""')
-      .replace(/%/g, '%%')
-      .replace(/&/g, '^&')
-      .replace(/\|/g, '^|')
-      .replace(/</g, '^<')
-      .replace(/>/g, '^>')
   }
 }

@@ -31,6 +31,8 @@ export async function createStorage(): Promise<StorageProvider> {
   }
 }
 
-// Re-export types
+// Re-export types and audit wrapper
 export type { StorageProvider, PlatformInfo } from './interfaces.js'
 export { detectPlatform } from './platform.js'
+export { AuditedStorageProvider } from './audit.js'
+export type { AuditEvent, AuditHandler } from './audit.js'
