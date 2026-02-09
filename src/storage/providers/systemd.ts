@@ -74,7 +74,7 @@ export class SystemdCredsProvider implements StorageProvider {
     } catch (err: any) {
       const stderr = (err?.stderr ?? '').toString()
       // systemd-creds returns non-zero if file missing/unreadable
-      if (stderr.includes('No such file') || stderr.toLowerCase().includes('no such file')) {
+      if (stderr.toLowerCase().includes('no such file')) {
         return null
       }
       throw sanitizeError(err)

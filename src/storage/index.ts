@@ -11,9 +11,10 @@ import { StorageProvider } from './interfaces.js'
  *
  * Auto-detects the platform and returns the appropriate provider:
  * - Linux: GNOME Keyring via secret-tool
+ * - Linux (headless): systemd-creds for system services
  * - macOS: Keychain via security
  * - Windows: Credential Manager via cmdkey
- * - Fallback: Encrypted file storage with warning
+ * - Fallback: Encrypted file storage (requires CLAWVAULT_ALLOW_FALLBACK=1)
  */
 export async function createStorage(): Promise<StorageProvider> {
   const platform = await detectPlatform()
