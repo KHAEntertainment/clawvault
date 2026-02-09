@@ -404,9 +404,9 @@ clawvault/
 
 ### Key Files
 
-- `CLAUDE.md` - Project overview and guidance
-- `DESIGN.md` - System design documentation
-- `IMPLEMENTATION_PLAN.md` - Development roadmap
+- `docs/agent/CLAUDE.md` - Project overview and agent guidance
+- `docs/planning/DESIGN.md` - System design documentation
+- `docs/planning/IMPLEMENTATION_PLAN.md` - Development roadmap
 - `package.json` - Dependencies and scripts
 
 ### Getting Help

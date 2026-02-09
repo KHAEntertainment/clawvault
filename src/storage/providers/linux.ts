@@ -1,21 +1,27 @@
 import { execFile } from 'child_process'
 import { StorageProvider } from '../interfaces.js'
-
 /**
  * Service name used in GNOME Keyring for all ClawVault secrets
  */
 const SERVICE = 'clawvault'
 
+const EXEC_TIMEOUT_MS = 10_000
+const EXEC_MAX_BUFFER_BYTES = 1 * 1024 * 1024
 
 function execFileCommand(file: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, (error, stdout, stderr) => {
-      if (error) {
-        reject(error)
-        return
+    execFile(
+      file,
+      args,
+      { timeout: EXEC_TIMEOUT_MS, maxBuffer: EXEC_MAX_BUFFER_BYTES },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        resolve({ stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
       }
-      resolve({ stdout, stderr })
-    })
+    )
   })
 }
 
@@ -45,6 +51,7 @@ export class LinuxKeyringProvider implements StorageProvider {
       const child = execFile(
         'secret-tool',
         ['store', `--label=${label}`, 'service', SERVICE, 'key', name],
+        { timeout: EXEC_TIMEOUT_MS, maxBuffer: EXEC_MAX_BUFFER_BYTES },
         (error) => {
           if (error) {
             reject(error)
@@ -101,7 +108,7 @@ export class LinuxKeyringProvider implements StorageProvider {
         '--dest',
         'org.freedesktop.secrets',
         '--object-path',
-        '/org/freedesktop/secrets/collections/login',
+        '/org/freedesktop/secrets',
         '--method',
         'org.freedesktop.Secret.Service.SearchItems',
         `{'service': <'${SERVICE}'>}`
@@ -130,7 +137,7 @@ export class LinuxKeyringProvider implements StorageProvider {
       return names
     }
 
-    const keyPattern = /'key':\s*<\s*'([^']+)'>/g
+    const keyPattern = /'key':\s*<\s*'([^']+)'\s*>/g
     let match
     while ((match = keyPattern.exec(output)) !== null) {
       names.push(match[1])
