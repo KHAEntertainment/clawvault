@@ -16,12 +16,16 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 
   if (platform === 'linux') {
     const hasSecretTool = await commandExists('secret-tool')
-    if (!hasSecretTool) return { platform, hasKeyring: false, provider: 'fallback' }
+    if (hasSecretTool) {
+      const usable = await linuxSecretToolUsable()
+      if (usable) return { platform, hasKeyring: true, provider: 'linux' }
+    }
 
-    const usable = await linuxSecretToolUsable()
-    if (!usable) return { platform, hasKeyring: false, provider: 'fallback' }
+    // Headless/system-service Linux: prefer systemd credentials if available.
+    const hasSystemdCreds = await commandExists('systemd-creds')
+    if (hasSystemdCreds) return { platform, hasKeyring: true, provider: 'systemd' }
 
-    return { platform, hasKeyring: true, provider: 'linux' }
+    return { platform, hasKeyring: false, provider: 'fallback' }
   }
 
   if (platform === 'darwin') {
@@ -48,7 +52,7 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 
 async function commandExists(cmd: string): Promise<boolean> {
   try {
-    await execFileAsync('sh', ['-lc', `command -v ${cmd}`])
+    await execFileAsync('sh', ['-lc', `command -v ${cmd}`], { timeout: 5_000 })
     return true
   } catch {
     return false
@@ -57,7 +61,7 @@ async function commandExists(cmd: string): Promise<boolean> {
 
 async function commandExistsWindows(cmd: string): Promise<boolean> {
   try {
-    await execFileAsync('cmd.exe', ['/c', 'where', cmd])
+    await execFileAsync('cmd.exe', ['/c', 'where', cmd], { timeout: 5_000 })
     return true
   } catch {
     return false
@@ -72,7 +76,7 @@ async function commandExistsWindows(cmd: string): Promise<boolean> {
  */
 async function linuxSecretToolUsable(): Promise<boolean> {
   try {
-    await execFileAsync('secret-tool', ['search', '--all', 'service', 'clawvault'])
+    await execFileAsync('secret-tool', ['search', '--all', 'service', 'clawvault'], { timeout: 5_000 })
     return true
   } catch (err: any) {
     const stderr = (err?.stderr ?? '').toString()

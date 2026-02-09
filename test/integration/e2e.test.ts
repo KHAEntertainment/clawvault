@@ -366,7 +366,7 @@ describe('End-to-End Tests', () => {
       expect(platform).toHaveProperty('provider')
 
       // Provider should be one of the valid options
-      expect(['linux', 'macos', 'windows', 'fallback']).toContain(platform.provider)
+      expect(['linux', 'systemd', 'macos', 'windows', 'fallback']).toContain(platform.provider)
     })
 
     it('should indicate keyring availability', async () => {

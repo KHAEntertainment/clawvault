@@ -47,5 +47,13 @@ export interface StorageProvider {
 export interface PlatformInfo {
   platform: NodeJS.Platform
   hasKeyring: boolean
-  provider: 'linux' | 'macos' | 'windows' | 'fallback'
+  /**
+   * Provider selection for local secret storage.
+   *
+   * - linux: Secret Service via libsecret/secret-tool
+   * - systemd: systemd credentials (systemd-creds) for headless/system services
+   * - macos/windows: OS-native credential store
+   * - fallback: encrypted file storage (last resort)
+   */
+  provider: 'linux' | 'systemd' | 'macos' | 'windows' | 'fallback'
 }
