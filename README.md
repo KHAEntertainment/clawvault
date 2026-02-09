@@ -58,12 +58,12 @@ Gateway resolves:   Config substitutes ${VAR} from environment
 
 ### Storage Backends
 
-| Platform | Backend | Command |
-|----------|---------|---------|
-| Linux | GNOME Keyring | `secret-tool` |
-| macOS | Keychain | `security` |
-| Windows | Credential Manager | `cmdkey` |
-| Fallback | Encrypted file | (development only) |
+| Platform | Backend | Tool | Install |
+|----------|---------|------|---------|
+| Linux | GNOME Keyring | `secret-tool` | `apt install libsecret-tools` |
+| macOS | Keychain | `security` | Built-in |
+| Windows | Credential Manager | `cmdkey` | Built-in |
+| Fallback | AES-256-GCM encrypted file | — | Automatic (development only) |
 
 ### Gateway Injection
 
@@ -76,9 +76,58 @@ systemctl --user import-environment OPENAI_API_KEY
 systemctl --user start openclaw-gateway.service
 ```
 
-## Configuration
+## Architecture: Two-Layer Design
 
-Secret definitions are stored in `~/.config/clawvault/secrets.json`:
+ClawVault separates **secret metadata** (what secrets exist, how they're used) from **secret values** (the actual credentials). These live in two different places:
+
+```
+┌─────────────────────────────────────────┐
+│  Configuration (metadata only)          │
+│  ~/.config/clawvault/secrets.json       │
+│  Names, descriptions, validation rules  │
+└──────────────────┬──────────────────────┘
+                   │ references
+┌──────────────────▼──────────────────────┐
+│  Secret Values (never in plaintext)     │
+│  OS Keyring or Fallback encrypted file  │
+│  Actual API keys, tokens, passwords     │
+└─────────────────────────────────────────┘
+```
+
+### Secret Value Storage (Primary): OS Keyring
+
+On supported platforms, secret values are stored in the OS-native encrypted keyring. This is the recommended and default path.
+
+**Linux** — GNOME Keyring via `libsecret` (`secret-tool`):
+
+```bash
+# Install libsecret-tools (Debian/Ubuntu)
+sudo apt install libsecret-tools
+
+# ClawVault uses secret-tool under the hood:
+#   Store:  secret-tool store --label="ClawVault: NAME" service clawvault key NAME
+#   Lookup: secret-tool lookup service clawvault key NAME
+#   Delete: secret-tool remove service clawvault key NAME
+```
+
+**macOS** — Keychain via `security` (built-in, no installation needed).
+
+**Windows** — Credential Manager via `cmdkey` (built-in, no installation needed).
+
+### Secret Value Storage (Fallback): Encrypted File
+
+When no keyring tools are detected, ClawVault falls back to AES-256-GCM encrypted file storage at `~/.clawvault/secrets.enc.json`. This is intended for development environments only.
+
+- Encryption key is derived via `scrypt` from the machine ID (`/etc/machine-id` on Linux) combined with a random 32-byte salt stored at `~/.clawvault/.salt`
+- Both files are created with mode `0600` (owner read/write only)
+- GCM authentication tag detects tampering
+- A prominent warning is printed when the fallback is active
+
+> **Note:** The fallback is weaker than a real keyring because the key is derivable from filesystem artifacts. Any process running as the same user can read the encrypted file. Install your platform's keyring tools for production use.
+
+### Configuration (Metadata Only)
+
+Secret *definitions* are stored in `~/.config/clawvault/secrets.json`. This file contains only metadata -- names, descriptions, validation rules, and gateway mappings. It never contains secret values.
 
 ```json
 {
@@ -89,7 +138,12 @@ Secret definitions are stored in `~/.config/clawvault/secrets.json`:
       "environmentVar": "OPENAI_API_KEY",
       "provider": "openai",
       "required": false,
-      "gateways": ["main"]
+      "gateways": ["main"],
+      "validation": {
+        "pattern": "^sk-[a-zA-Z0-9]{48}$",
+        "minLength": 51,
+        "maxLength": 51
+      }
     }
   },
   "gateway": {
@@ -98,6 +152,15 @@ Secret definitions are stored in `~/.config/clawvault/secrets.json`:
   }
 }
 ```
+
+| Field | Purpose |
+|-------|---------|
+| `description` | Human-readable label (shown in `clawvault list`) |
+| `environmentVar` | Env var name injected into the Gateway process |
+| `provider` | Service this key belongs to (openai, anthropic, etc.) |
+| `required` | Whether the Gateway should fail if this secret is missing |
+| `gateways` | Which gateway instances receive this secret |
+| `validation` | Optional regex pattern and length constraints for the value |
 
 ## CLI Commands
 
