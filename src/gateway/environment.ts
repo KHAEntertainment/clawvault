@@ -53,7 +53,7 @@ export async function injectSecrets(
     try {
       value = await storage.get(name)
     } catch (error: unknown) {
-      throw new Error(`Failed to retrieve secret for injection: ${name}`, { cause: error })
+      throw new Error(`Failed to retrieve secret "${name}"`, { cause: error })
     }
 
     if (value) {
@@ -88,13 +88,11 @@ export async function injectSecretsWithConfig(
 
   for (const name of secretNames) {
     let value: string | null
-
     try {
       value = await storage.get(name)
     } catch (error: unknown) {
-      throw new Error(`Failed to retrieve secret for injection: ${name}`, { cause: error })
+      throw new Error(`Failed to retrieve secret "${name}"`, { cause: error })
     }
-
     if (value) {
       // Use mapped env var name or default to secret name
       const envVar = envVarMap?.[name] || name

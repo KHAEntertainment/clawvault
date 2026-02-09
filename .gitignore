@@ -42,8 +42,15 @@ pids
 # Optional eslint cache
 .eslintcache
 
-# Config secrets (local development)
-~/.config/clawvault/*.json
+# TypeScript build cache
+*.tsbuildinfo
+
+# Test output
+test-results/
+junit*.xml
+
+# Local config (never commit real configs)
+.config/clawvault/*.json
 !.config/clawvault/secrets.json.example
 
 # Temporary files

@@ -127,10 +127,10 @@ label: "ClawVault: <SECRET_DESCRIPTION>"
 ## Related Projects
 
 This project combines ideas from:
-- **Confidant** (`reference-confidant.md`) - Web UI submission pattern (but we avoid the security theater of passing secrets through AI)
-- **Secret Manager** (`reference-secret-manager.md`) - Keyring storage and systemd integration (but we add dynamic config and cross-platform support)
+- **Confidant** (`../reference/reference-confidant.md`) - Web UI submission pattern inspiration
+- **Secret Manager** (`../reference/reference-secret-manager.md`) - Keyring + systemd integration inspiration
 
-See `DESIGN.md` for comprehensive system design documentation.
+See `../planning/DESIGN.md` for comprehensive system design documentation.
 
 ## TypeScript Configuration
 

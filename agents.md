@@ -25,6 +25,9 @@ npm run audit:security  # npm audit at high severity
   - `src/cli/` Commander/Inquirer CLI
 - `test/` — `unit/`, `integration/`, `security/`
 - `docs/` — all non-README documentation
+  - `docs/agent/` agent notes/prompts
+  - `docs/planning/` design/brief/implementation plan
+  - `docs/reference/` upstream references and scripts
   - `docs/SECURITY.md` — **full threat model, security controls, and
     troubleshooting guide** (read this first when debugging security issues)
 

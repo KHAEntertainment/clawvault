@@ -14,6 +14,8 @@ import { LinuxKeyringProvider } from '../../src/storage/providers/linux'
 import { StorageProvider } from '../../src/storage/interfaces'
 import { injectSecretsWithConfig } from '../../src/gateway/environment'
 import { ConfigSchema } from '../../src/config/schemas'
+import { readFileSync, readdirSync } from 'fs'
+import { join } from 'path'
 
 jest.mock('inquirer', () => ({
   __esModule: true,
@@ -54,17 +56,17 @@ describe('Security: Context Leak Prevention', () => {
       expect(true).toBe(true) // Documentation test
     })
 
-    it('should not expose get() in CLI commands', async () => {
-      // Import CLI commands to verify they don't expose get()
-      const { addCommand } = await import('../../src/cli/commands/add')
-      const { listCommand } = await import('../../src/cli/commands/list')
-      const { removeCommand } = await import('../../src/cli/commands/remove')
+    it('should not expose get() in CLI command sources', () => {
+      const commandDir = join(__dirname, '../../src/cli/commands')
+      const commandFiles = readdirSync(commandDir)
+        .filter(f => f.endsWith('.ts'))
+        .filter(f => f !== 'index.ts')
 
-      // Commands use storage.set(), storage.has(), storage.list(), storage.delete()
-      // but NEVER expose storage.get() or return secret values
-      expect(addCommand).toBeDefined()
-      expect(listCommand).toBeDefined()
-      expect(removeCommand).toBeDefined()
+      for (const file of commandFiles) {
+        const source = readFileSync(join(commandDir, file), 'utf-8')
+        // CLI should rely on set/has/list/delete and never call storage.get()
+        expect(source).not.toMatch(/\bstorage\.get\s*\(/)
+      }
     })
   })
 

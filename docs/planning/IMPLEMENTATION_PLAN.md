@@ -5,7 +5,7 @@
 ### Allowed APIs and Reference Patterns
 
 #### secret-tool Commands (Linux/GNOME Keyring)
-**Source:** `reference-secret-manager.sh`
+**Source:** `docs/reference/reference-secret-manager.sh`
 
 | Operation | Command Pattern |
 |-----------|----------------|
@@ -19,7 +19,7 @@
 - `key`: `<SECRET_NAME>` (variable)
 - `--label`: "ClawVault: <DESCRIPTION>" (human-readable)
 
-#### Storage Interface (from DESIGN.md)
+#### Storage Interface (from docs/planning/DESIGN.md)
 ```typescript
 interface StorageProvider {
   set(name: string, value: string): Promise<void>
@@ -37,7 +37,7 @@ interface StorageProvider {
 - `jest: ^29.7.0` - Testing
 
 #### Security Anti-Patterns to Avoid
-From `reference-confidant.md`:
+From `docs/reference/reference-confidant.md`:
 - **NEVER** pass secret values through AI context
 - **NEVER** log secret values (metadata only)
 - **NEVER** store secrets in config files
@@ -52,7 +52,7 @@ From `reference-confidant.md`:
 #### Task 1.1: Type Definitions
 **File:** `src/types/index.ts`
 
-Copy these types from DESIGN.md Section 5:
+Copy these types from docs/planning/DESIGN.md Section 5:
 
 ```typescript
 // Core types
@@ -181,7 +181,7 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 #### Task 1.4: Linux Keyring Provider
 **File:** `src/storage/providers/linux.ts`
 
-Copy pattern from `reference-secret-manager.sh:45-80`:
+Copy pattern from `docs/reference/reference-secret-manager.sh:45-80`:
 
 ```typescript
 import { exec } from 'child_process'
@@ -658,7 +658,7 @@ export async function exportToSystemd(env: EnvironmentInjection): Promise<string
 #### Task 3.2: Systemd Service Manager
 **File:** `src/gateway/systemd.ts`
 
-Copy pattern from `reference-secret-manager.sh:150-170`:
+Copy pattern from `docs/reference/reference-secret-manager.sh:150-170`:
 
 ```typescript
 import { exec } from 'child_process'
