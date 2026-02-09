@@ -12,6 +12,7 @@
  */
 
 import { StorageProvider } from '../storage/index.js'
+import { SECRET_NAME_PATTERN } from '../config/schemas.js'
 
 /**
  * Environment variable mapping for systemd import-environment.
@@ -121,8 +122,13 @@ export async function injectSecretsWithConfig(
  * @returns Command string for systemctl import-environment
  */
 export function exportToSystemdCommand(env: EnvironmentInjection): string {
-  const keys = Object.keys(env).join(' ')
-  return `systemctl --user import-environment ${keys}`
+  const keys = Object.keys(env)
+  for (const key of keys) {
+    if (!SECRET_NAME_PATTERN.test(key)) {
+      throw new Error(`Invalid environment variable name: ${key}`)
+    }
+  }
+  return `systemctl --user import-environment ${keys.join(' ')}`
 }
 
 /**
