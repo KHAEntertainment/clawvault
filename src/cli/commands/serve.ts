@@ -3,6 +3,13 @@
  *
  * Starts the web UI server for secret submission.
  * Web UI allows submitting secrets directly to the keyring, bypassing AI context.
+ *
+ * Security notes (for agents troubleshooting):
+ * - A one-time bearer token is generated and printed to the terminal.
+ *   All API requests must include `Authorization: Bearer <token>`.
+ * - Binding to any host other than localhost triggers a security warning
+ *   because it exposes the secret-submission endpoint to the network.
+ * - Rate limiting applies to /api/submit (30 req / 15 min).
  */
 
 import { Command } from 'commander'
@@ -27,7 +34,6 @@ export const serveCommand = new Command('serve')
   .action(async (options: ServeOptions) => {
     const port = parseInt(options.port, 10)
 
-    // Validate TLS options
     if (options.tls && (!options.cert || !options.key)) {
       console.log(chalk.red('Error: --cert and --key are required when using --tls'))
       process.exit(1)
@@ -58,6 +64,16 @@ export const serveCommand = new Command('serve')
 
     const storage = await createStorage()
 
+    if (!webModule.isLocalhostBinding(options.host)) {
+      console.log('')
+      console.log(chalk.red('╔══════════════════════════════════════════════════════════════╗'))
+      console.log(chalk.red('║  WARNING: Binding to a non-localhost address!               ║'))
+      console.log(chalk.red('║  This exposes the secret-submission endpoint to the network. ║'))
+      console.log(chalk.red('║  Only do this on a trusted, firewalled network.             ║'))
+      console.log(chalk.red('╚══════════════════════════════════════════════════════════════╝'))
+      console.log('')
+    }
+
     console.log(chalk.cyan('ClawVault Web UI'))
     console.log(chalk.gray('Secrets are submitted directly to the encrypted keyring.'))
     console.log('')
@@ -65,7 +81,7 @@ export const serveCommand = new Command('serve')
     console.log(chalk.gray(`Starting server on ${options.host}:${port}`))
 
     try {
-      await webModule.startServer(storage, {
+      const result = await webModule.startServer(storage, {
         port,
         host: options.host,
         ...(options.tls && {
@@ -79,6 +95,10 @@ export const serveCommand = new Command('serve')
       const protocol = options.tls ? 'https' : 'http'
       console.log('')
       console.log(chalk.green(`Server running at ${protocol}://${options.host}:${port}`))
+      console.log('')
+      console.log(chalk.yellow('API Bearer Token (include in Authorization header):'))
+      console.log(chalk.bold(result.token))
+      console.log('')
       console.log(chalk.gray('Press Ctrl+C to stop'))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
