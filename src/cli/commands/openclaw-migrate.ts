@@ -47,63 +47,70 @@ export const openclawMigrateCommand = new Command('migrate')
   .option('--json', 'Output JSON report (metadata only)')
   .option('--verbose', 'Print per-secret actions (metadata only)')
   .action(async (options: OpenClawMigrateOptions) => {
-    const dryRun = !options.apply
-    const includeOAuth = !options.apiKeysOnly
-    const profileEnvVarMap = parseProfileMap(options.map)
+    try {
+      const dryRun = !options.apply
+      const includeOAuth = !options.apiKeysOnly
+      const profileEnvVarMap = parseProfileMap(options.map)
 
-    const reports = await migrateAllOpenClawAuthStores({
-      dryRun,
-      openclawDir: options.openclawDir,
-      agentId: options.agentId,
-      includeOAuth,
-      prefix: options.prefix,
-      backup: options.backup,
-      profileEnvVarMap
-    })
+      const reports = await migrateAllOpenClawAuthStores({
+        dryRun,
+        openclawDir: options.openclawDir,
+        agentId: options.agentId,
+        includeOAuth,
+        prefix: options.prefix,
+        backup: options.backup,
+        profileEnvVarMap
+      })
 
-    if (options.json) {
-      // Metadata only: reports intentionally do not include secret values
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(reports, null, 2))
-      return
-    }
+      if (options.json) {
+        // Metadata only: reports intentionally do not include secret values
+        // eslint-disable-next-line no-console
+        console.log(JSON.stringify(reports, null, 2))
+        return
+      }
 
-    const scanned = reports.length
-    const filesChanged = reports.filter(r => r.changed).length
-    const totalChanges = reports.reduce((sum, r) => sum + r.changes.length, 0)
+      const scanned = reports.length
+      const filesChanged = reports.filter(r => r.changed).length
+      const totalChanges = reports.reduce((sum, r) => sum + r.changes.length, 0)
 
-    if (dryRun) {
-      console.log(chalk.yellow('OpenClaw migration (dry-run)'))
-      console.log(chalk.gray('No secrets were written and no files were modified.'))
-    } else {
-      console.log(chalk.green('OpenClaw migration (apply)'))
-    }
+      if (dryRun) {
+        console.log(chalk.yellow('OpenClaw migration (dry-run)'))
+        console.log(chalk.gray('No secrets were written and no files were modified.'))
+      } else {
+        console.log(chalk.green('OpenClaw migration (apply)'))
+      }
 
-    console.log(chalk.gray(`Scanned: ${scanned} auth store file${scanned === 1 ? '' : 's'}`))
-    console.log(chalk.gray(`Files changed: ${filesChanged}`))
-    console.log(chalk.gray(`Secrets migrated: ${totalChanges}`))
+      console.log(chalk.gray(`Scanned: ${scanned} auth store file${scanned === 1 ? '' : 's'}`))
+      console.log(chalk.gray(`Files changed: ${filesChanged}`))
+      console.log(chalk.gray(`Secrets migrated: ${totalChanges}`))
 
-    if (scanned === 0) {
-      console.log(chalk.yellow('No auth-profiles.json files found.'))
-      return
-    }
+      if (scanned === 0) {
+        console.log(chalk.yellow('No auth-profiles.json files found.'))
+        return
+      }
 
-    if (options.verbose) {
-      for (const report of reports) {
-        if (!report.changed) continue
-        console.log('')
-        console.log(chalk.bold(`${report.agentId}`))
-        console.log(chalk.gray(report.authStorePath))
-        for (const change of report.changes) {
-          console.log(
-            `  ${chalk.cyan(change.profileId)} ${chalk.gray(change.field)} → ${chalk.green(change.envVar)} ${chalk.gray(`(${change.length} chars)`)}`
-          )
+      if (options.verbose) {
+        for (const report of reports) {
+          if (!report.changed) continue
+          console.log('')
+          console.log(chalk.bold(`${report.agentId}`))
+          console.log(chalk.gray(report.authStorePath))
+          for (const change of report.changes) {
+            console.log(
+              `  ${chalk.cyan(change.profileId)} ${chalk.gray(change.field)} → ${chalk.green(change.envVar)} ${chalk.gray(`(${change.length} chars)`)}`
+            )
+          }
         }
       }
-    }
 
-    if (dryRun && totalChanges > 0) {
-      console.log('')
-      console.log(chalk.gray('Re-run with --apply to write secrets to the keyring and update auth-profiles.json.'))
+      if (dryRun && totalChanges > 0) {
+        console.log('')
+        console.log(chalk.gray('Re-run with --apply to write secrets to the keyring and update auth-profiles.json.'))
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      // eslint-disable-next-line no-console
+      console.error(chalk.red(`Error: ${message}`))
+      process.exitCode = 1
     }
   })

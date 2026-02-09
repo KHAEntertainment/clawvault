@@ -23,6 +23,7 @@ export interface GatewayInjectionResult {
   injected: string[] // Environment variable names that were injected
   skipped: string[] // Secret names that had no value
   servicesRestarted: string[] // Services that were restarted
+  warnings: string[] // Metadata-only warnings
   totalCount: number
 }
 
@@ -65,6 +66,7 @@ export async function injectToGateway(
 ): Promise<GatewayInjectionResult> {
   const systemd = new SystemdManager()
   const servicesRestarted: string[] = []
+  const warnings: string[] = []
 
   // Build environment variable mapping from config
   const envVarMap: Record<string, string> = {}
@@ -90,6 +92,8 @@ export async function injectToGateway(
       if (!options?.skipRestart) {
         throw new GatewayInjectionError('Failed to import environment to systemd', error)
       }
+
+      warnings.push('Failed to import environment to systemd user session')
     }
   }
 
@@ -112,6 +116,7 @@ export async function injectToGateway(
     injected: result.injected,
     skipped: result.skipped,
     servicesRestarted,
+    warnings,
     totalCount: result.totalCount
   }
 }

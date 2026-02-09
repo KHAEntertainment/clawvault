@@ -6,7 +6,7 @@ import { StorageProvider } from '../interfaces.js'
 const SERVICE = 'clawvault'
 
 const EXEC_TIMEOUT_MS = 10_000
-const EXEC_MAX_BUFFER_BYTES = 10 * 1024 * 1024
+const EXEC_MAX_BUFFER_BYTES = 1 * 1024 * 1024
 
 function execFileCommand(file: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -108,7 +108,7 @@ export class LinuxKeyringProvider implements StorageProvider {
         '--dest',
         'org.freedesktop.secrets',
         '--object-path',
-        '/org/freedesktop/secrets/collections/login',
+        '/org/freedesktop/secrets',
         '--method',
         'org.freedesktop.Secret.Service.SearchItems',
         `{'service': <'${SERVICE}'>}`

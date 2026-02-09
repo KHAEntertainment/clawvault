@@ -53,7 +53,7 @@ export async function injectSecrets(
     try {
       value = await storage.get(name)
     } catch (error: unknown) {
-      throw new Error(`Failed to retrieve secret for injection: ${name}`, { cause: error })
+      throw new Error(`Failed to retrieve secret "${name}"`, { cause: error })
     }
 
     if (value) {

@@ -41,7 +41,7 @@ export interface MigrationFileReport {
     profileId: string
     provider: string
     field: string
-    reason: 'missing' | 'empty' | 'already_placeholder' | 'unsupported_type'
+    reason: 'missing' | 'empty' | 'already_placeholder' | 'unsupported_type' | 'map_ignored'
   }>
 }
 
@@ -81,6 +81,8 @@ export async function discoverAuthStorePaths(
 }
 
 export function isEnvPlaceholder(value: unknown): value is string {
+  // Intentionally strict: only treat uppercase placeholders like ${FOO_BAR} as env refs.
+  // Lower/mixed-case strings are treated as plaintext and eligible for migration.
   return typeof value === 'string' && /^\$\{[A-Z][A-Z0-9_]*\}$/.test(value)
 }
 
@@ -149,16 +151,20 @@ async function backupFile(path: string): Promise<string> {
   return backupPath
 }
 
-function sanitizeStorageFailureContext(input: {
+function sanitizeStorageFailureContext(
+  input: {
   profileId: string
   field: string
   envVar: string
   provider: string
   agentId: string
   authStorePath: string
-}): Error {
+  },
+  cause: unknown
+): Error {
   return new Error(
-    `Failed to store credential in keyring (agent=${input.agentId}, profile=${input.profileId}, field=${input.field}, env=${input.envVar}, provider=${input.provider}, path=${input.authStorePath})`
+    `Failed to store credential in keyring (agent=${input.agentId}, profile=${input.profileId}, field=${input.field}, env=${input.envVar}, provider=${input.provider}, path=${input.authStorePath})`,
+    { cause }
   )
 }
 
@@ -225,15 +231,18 @@ export async function migrateAuthStoreFile(
       if (!dryRun) {
         try {
           await storage.set(envVar, current)
-        } catch {
-          throw sanitizeStorageFailureContext({
+        } catch (error: unknown) {
+          throw sanitizeStorageFailureContext(
+            {
             agentId,
             authStorePath,
             profileId,
             field: 'key',
             envVar,
             provider
-          })
+            },
+            error
+          )
         }
       }
 
@@ -255,6 +264,10 @@ export async function migrateAuthStoreFile(
     }
 
     if (type === 'oauth' && includeOAuth) {
+      if (profileId in profileEnvVarMap) {
+        skipped.push({ profileId, provider, field: 'map', reason: 'map_ignored' })
+      }
+
       let updated = false
       const next: Record<string, unknown> = { ...credential }
 
@@ -278,15 +291,18 @@ export async function migrateAuthStoreFile(
         if (!dryRun) {
           try {
             await storage.set(envVar, current)
-          } catch {
-            throw sanitizeStorageFailureContext({
+          } catch (error: unknown) {
+            throw sanitizeStorageFailureContext(
+              {
               agentId,
               authStorePath,
               profileId,
               field,
               envVar,
               provider
-            })
+              },
+              error
+            )
           }
         }
 

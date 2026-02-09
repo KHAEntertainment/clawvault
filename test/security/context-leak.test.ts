@@ -14,7 +14,7 @@ import { LinuxKeyringProvider } from '../../src/storage/providers/linux'
 import { StorageProvider } from '../../src/storage/interfaces'
 import { injectSecretsWithConfig } from '../../src/gateway/environment'
 import { ConfigSchema } from '../../src/config/schemas'
-import { readFileSync } from 'fs'
+import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 
 jest.mock('inquirer', () => ({
@@ -58,7 +58,9 @@ describe('Security: Context Leak Prevention', () => {
 
     it('should not expose get() in CLI command sources', () => {
       const commandDir = join(__dirname, '../../src/cli/commands')
-      const commandFiles = ['add.ts', 'list.ts', 'remove.ts', 'rotate.ts', 'serve.ts']
+      const commandFiles = readdirSync(commandDir)
+        .filter(f => f.endsWith('.ts'))
+        .filter(f => f !== 'index.ts')
 
       for (const file of commandFiles) {
         const source = readFileSync(join(commandDir, file), 'utf-8')

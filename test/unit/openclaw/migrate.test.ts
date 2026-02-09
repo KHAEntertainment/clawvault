@@ -30,13 +30,20 @@ class MemoryStorage implements StorageProvider {
   }
 }
 
+const tempDirs: string[] = []
+
 async function mkTempOpenClawDir(): Promise<string> {
   const root = join(tmpdir(), `clawvault-openclaw-test-${Date.now()}-${Math.random().toString(16).slice(2)}`)
   await fs.mkdir(root, { recursive: true })
+  tempDirs.push(root)
   return root
 }
 
 describe('openclaw migrate', () => {
+  afterAll(async () => {
+    await Promise.all(tempDirs.map(dir => fs.rm(dir, { recursive: true, force: true })))
+  })
+
   it('buildEnvVarName should produce stable env var names', () => {
     const envVar = buildEnvVarName({
       prefix: 'OPENCLAW',

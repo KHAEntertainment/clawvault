@@ -23,7 +23,8 @@ describe('LinuxKeyringProvider', () => {
 
   describe('set()', () => {
     it('should store a secret using secret-tool', async () => {
-      mockExecFile.mockImplementation((_bin: string, _args: string[], cb: any) => {
+      mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
+        const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
         cb(null, '', '')
         return { stdin: { write: jest.fn(), end: jest.fn() } }
       })
@@ -43,7 +44,8 @@ describe('LinuxKeyringProvider', () => {
     it('should support multiline secret values without shell escaping', async () => {
       const write = jest.fn()
       const end = jest.fn()
-      mockExecFile.mockImplementation((_bin: string, _args: string[], cb: any) => {
+      mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
+        const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
         cb(null, '', '')
         return { stdin: { write, end } }
       })
@@ -57,7 +59,8 @@ describe('LinuxKeyringProvider', () => {
 
     it('should propagate errors from secret-tool', async () => {
       const error = new Error('secret-tool: command not found')
-      mockExecFile.mockImplementation((_bin: string, _args: string[], cb: any) => {
+      mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
+        const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
         cb(error, '', '')
         return { stdin: { write: jest.fn(), end: jest.fn() } }
       })
@@ -68,7 +71,8 @@ describe('LinuxKeyringProvider', () => {
 
   describe('get()', () => {
     it('should retrieve a secret using secret-tool lookup', async () => {
-      mockExecFile.mockImplementation((_bin: string, args: string[], cb: any) => {
+      mockExecFile.mockImplementation((_bin: string, args: string[], optionsOrCb: any, maybeCb?: any) => {
+        const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
         if (args.includes('lookup')) {
           cb(null, 'sk-retrieved-key-12345', '')
         } else {
@@ -92,7 +96,8 @@ describe('LinuxKeyringProvider', () => {
     it('should return null for non-existent secrets', async () => {
       const error = new Error('secret-tool: not found')
       ;(error as any).code = 1
-      mockExecFile.mockImplementation((_bin: string, _args: string[], cb: any) => {
+      mockExecFile.mockImplementation((_bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
+        const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
         cb(error, '', '')
       })
 
@@ -105,7 +110,8 @@ describe('LinuxKeyringProvider', () => {
   describe('list()', () => {
     it('should list secrets using gdbus', async () => {
       const gdbusOutput = "({'key': <'OPENAI_API_KEY'>}, {'key': <'ANTHROPIC_API_KEY'>},)"
-      mockExecFile.mockImplementation((bin: string, _args: string[], cb: any) => {
+      mockExecFile.mockImplementation((bin: string, _args: string[], optionsOrCb: any, maybeCb?: any) => {
+        const cb = typeof optionsOrCb === 'function' ? optionsOrCb : maybeCb
         if (bin === 'gdbus') cb(null, gdbusOutput, '')
         else cb(null, '', '')
       })
