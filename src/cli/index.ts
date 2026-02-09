@@ -12,6 +12,7 @@ import { listCommand } from './commands/list.js'
 import { removeCommand } from './commands/remove.js'
 import { rotateCommand } from './commands/rotate.js'
 import { serveCommand } from './commands/serve.js'
+import { requestCommand } from './commands/request.js'
 import { openclawCommand } from './commands/openclaw.js'
 import { doctorCommand } from './commands/doctor.js'
 
@@ -28,6 +29,7 @@ program.addCommand(listCommand)
 program.addCommand(removeCommand)
 program.addCommand(rotateCommand)
 program.addCommand(serveCommand)
+program.addCommand(requestCommand)
 program.addCommand(openclawCommand)
 program.addCommand(doctorCommand)
 

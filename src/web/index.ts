@@ -47,6 +47,9 @@ import { type StorageProvider } from '../storage/index.js'
 import { join } from 'path'
 import { submitSecret } from './routes/submit.js'
 import { statusRoute } from './routes/status.js'
+import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.js'
+import { SecretRequestStore } from './requests/store.js'
+import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */
@@ -58,18 +61,25 @@ export interface WebServerOptions {
     cert: string
     key: string
   }
+  /** Allow binding non-localhost over HTTP (strongly discouraged) */
+  allowInsecureHttp?: boolean
+  /** Optional request store (used for one-time secret request links) */
+  requestStore?: SecretRequestStore
+  /** Override default request TTL (ms) */
+  requestTtlMs?: number
 }
 
 export interface ServerStartResult {
   /** Bearer token required for API access */
   token: string
+  /** Server origin (scheme://host:port) */
+  origin: string
+  /** One-time request store */
+  requestStore: SecretRequestStore
+  /** Close server */
+  close: () => Promise<void>
 }
 
-const LOCALHOST_ADDRESSES = new Set(['localhost', '127.0.0.1', '::1'])
-
-function isLocalhostBinding(host: string): boolean {
-  return LOCALHOST_ADDRESSES.has(host)
-}
 
 /**
  * Create and configure the Express application.
@@ -84,6 +94,7 @@ export async function createServer(
   options: WebServerOptions,
   token: string
 ): Promise<express.Application> {
+  const requestStore = options.requestStore ?? new SecretRequestStore({ ttlMs: options.requestTtlMs })
   const app = express()
 
   // --- Helmet: comprehensive security headers ---
@@ -140,9 +151,18 @@ export async function createServer(
   app.post('/api/submit', authMiddleware, submitLimiter, (req: Request, res: Response) => submitSecret(req, res, storage))
   app.get('/api/status', authMiddleware, (req: Request, res: Response) => statusRoute(req, res, storage))
 
-  // --- HTML form (serves the token inline so the form can POST) ---
+  // Create one-time secret request link
+  app.post('/api/requests', authMiddleware, (req: Request, res: Response) => apiCreateRequest(req, res, requestStore))
+
+  // --- HTML forms ---
   app.get('/', (_req: Request, res: Response) => {
     res.sendFile(join(__dirname, 'routes', 'templates', 'form.html'))
+  })
+
+  // One-time request pages do NOT require bearer token
+  app.get('/requests/:id', (req: Request, res: Response) => requestForm(req, res, requestStore))
+  app.post('/requests/:id/submit', express.urlencoded({ extended: true }), (req: Request, res: Response) => {
+    void requestSubmit(req, res, requestStore, storage)
   })
 
   return app
@@ -158,14 +178,29 @@ export async function startServer(
   storage: StorageProvider,
   options: WebServerOptions
 ): Promise<ServerStartResult> {
-  const token = randomBytes(32).toString('hex')
-  const app = await createServer(storage, options, token)
+  // Enforce insecure HTTP policy if TLS is not enabled.
+  if (!options.tls) {
+    const policy = decideInsecureHttpPolicy(options.host, options.allowInsecureHttp ?? false)
+    if (!policy.allow) {
+      throw new Error(
+        'Refusing to bind non-localhost over HTTP. Use Tailscale (recommended) or enable TLS. ' +
+        'To override (strongly discouraged), pass --allow-insecure-http.'
+      )
+    }
+  }
 
+  const token = randomBytes(32).toString('hex')
+  const requestStore = options.requestStore ?? new SecretRequestStore({ ttlMs: options.requestTtlMs })
+  const app = await createServer(storage, { ...options, requestStore }, token)
+
+  const protocol = options.tls ? 'https' : 'http'
+
+  let server: any
   if (options.tls) {
     const https = await import('https')
     const fs = await import('fs')
 
-    const server = https.createServer(
+    server = https.createServer(
       {
         cert: fs.readFileSync(options.tls.cert),
         key: fs.readFileSync(options.tls.key)
@@ -178,14 +213,25 @@ export async function startServer(
       server.on('error', reject)
     })
   } else {
-    const server = app.listen(options.port, options.host)
+    server = app.listen(options.port, options.host)
     await new Promise<void>((resolve, reject) => {
       server.on('listening', () => resolve())
       server.on('error', reject)
     })
   }
 
-  return { token }
+  const addr = server.address?.() as any
+  const port = addr?.port ?? options.port
+  const origin = `${protocol}://${options.host}:${port}`
+
+  const close = async (): Promise<void> => {
+    requestStore.stopCleanup()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+
+  return { token, origin, requestStore, close }
 }
 
 export { isLocalhostBinding }
+export { decideInsecureHttpPolicy } from './network-policy.js'
+export { isTailscaleHost } from './network-policy.js'
