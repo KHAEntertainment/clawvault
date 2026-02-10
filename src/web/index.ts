@@ -255,12 +255,15 @@ export async function createServer(
     code{background:#f4f4f5;padding:2px 6px;border-radius:6px;}
     .card{border:1px solid #e4e4e7;border-radius:12px;padding:16px;}
     .muted{color:#52525b;}
-    input{width:100%;padding:10px;border:1px solid #d4d4d8;border-radius:10px;}
-    button{padding:10px 14px;border-radius:10px;border:0;background:#111827;color:#fff;cursor:pointer;}
+    .cv-banner{display:block; width:60%; height:auto; margin:0 auto 18px;}
+    @media (min-width: 768px){ .cv-banner{ width:30%; } }
   </style>
 </head>
 <body>
-  <h1>ClawVault Web UI</h1>
+  <header>
+    <img src="/static/logo.jpg" alt="ClawVault" class="cv-banner" />
+  </header>
+
   <p class="muted">This server stores secrets directly to your OS keyring / system credentials store.</p>
 
   <div class="card">
