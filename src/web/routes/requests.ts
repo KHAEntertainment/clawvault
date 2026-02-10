@@ -70,11 +70,11 @@ export function requestForm(req: Request, res: Response, store: SecretRequestSto
 
   res.status(200).send(htmlPage('Submit secret', `
     <header style="margin-bottom:18px;">
-      <img
-        src="/static/logo.jpg"
-        alt="ClawVault"
-        style="display:block; width:100%; max-width:720px; height:auto; margin:0 auto;"
-      />
+      <style>
+        .cv-banner{display:block; width:60%; height:auto; margin:0 auto;}
+        @media (min-width: 768px){ .cv-banner{ width:30%; } }
+      </style>
+      <img src="/static/logo.jpg" alt="ClawVault" class="cv-banner" />
     </header>
 
     <h1 style="margin-top:0;">Submit secret</h1>
@@ -113,11 +113,11 @@ export async function requestSubmit(req: Request, res: Response, store: SecretRe
     await storage.set(r.secretName, secretValue)
     res.status(200).send(htmlPage('Stored', `
       <header style="margin-bottom:18px;">
-        <img
-          src="/static/logo.jpg"
-          alt="ClawVault"
-          style="display:block; width:100%; max-width:720px; height:auto; margin:0 auto;"
-        />
+        <style>
+          .cv-banner{display:block; width:60%; height:auto; margin:0 auto;}
+          @media (min-width: 768px){ .cv-banner{ width:30%; } }
+        </style>
+        <img src="/static/logo.jpg" alt="ClawVault" class="cv-banner" />
       </header>
       <div style="text-align:center; padding:18px 20px 40px;">
         <div style="font-size:64px; margin-bottom:20px;">✅</div>
