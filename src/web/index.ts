@@ -49,6 +49,7 @@ import { statusRoute } from './routes/status.js'
 import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.js'
 import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
+import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
 
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */
@@ -205,22 +206,10 @@ export async function createServer(
 `)
   })
 
-  // Placeholder logo (SVG). Replace later with the provided PNG once added to the repo.
-  app.get('/static/logo.svg', (_req: Request, res: Response) => {
-    res.type('image/svg+xml').send(`<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="0" x2="1">
-      <stop offset="0" stop-color="#b91c1c"/>
-      <stop offset="1" stop-color="#9f1239"/>
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0b0b0c" stroke="#2a2a2e"/>
-  <path d="M22 28c0-6 4-10 10-10s10 4 10 10v6h2c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H20c-1.1 0-2-.9-2-2V36c0-1.1.9-2 2-2h2v-6z" fill="#d4d4d8"/>
-  <circle cx="32" cy="41" r="4" fill="#111827"/>
-  <path d="M12 32c4-6 8-6 12 0-4 6-8 6-12 0z" fill="url(#g)" opacity="0.95"/>
-  <path d="M52 32c-4-6-8-6-12 0 4 6 8 6 12 0z" fill="url(#g)" opacity="0.95"/>
-</svg>`)
+  // Logo asset (embedded to avoid filesystem path issues in ESM builds)
+  app.get('/static/logo.jpg', (_req: Request, res: Response) => {
+    const buf = Buffer.from(CLAWVAULT_LOGO_JPG_BASE64, 'base64')
+    res.type('image/jpeg').send(buf)
   })
 
   // --- API routes (auth required) ---
