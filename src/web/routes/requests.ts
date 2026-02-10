@@ -65,18 +65,23 @@ export function requestForm(req: Request, res: Response, store: SecretRequestSto
 
   const labelLine = r.label ? `<p class="muted">${escapeHtml(r.label)}</p>` : ''
 
+  // Add cache-busting meta tags and disable-button-on-submit script
   res.status(200).send(htmlPage('Submit secret', `
     <h1>Submit secret</h1>
     ${labelLine}
     <div class="card">
       <p class="muted">Secret name: <code>${escapeHtml(r.secretName)}</code></p>
-      <form method="POST" action="/requests/${encodeURIComponent(r.id)}/submit">
+      <form method="POST" action="/requests/${encodeURIComponent(r.id)}/submit" onsubmit="document.getElementById('submitBtn').disabled=true; document.getElementById('submitBtn').textContent='Storing...'; document.getElementById('statusMsg').textContent='Submitting...please wait'; return true;">
         <label for="secretValue" class="muted">Secret value</label><br />
-        <input id="secretValue" name="secretValue" type="password" autocomplete="off" required />
+        <input id="secretValue" name="secretValue" type="password" autocomplete="off" required autofocus />
         <p class="muted" style="font-size:12px;">This will be stored directly into your OS keyring/system credentials store. It will not be shown back.</p>
-        <button type="submit">Store secret</button>
+        <button type="submit" id="submitBtn">Store secret</button>
+        <p id="statusMsg" style="margin-top:10px; color:#6b7280;"></p>
       </form>
     </div>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
   `))
 }
 
@@ -97,7 +102,14 @@ export async function requestSubmit(req: Request, res: Response, store: SecretRe
 
   try {
     await storage.set(r.secretName, secretValue)
-    res.status(200).send(htmlPage('Stored', `<h1>Secret stored</h1><p class="muted">Stored <code>${escapeHtml(r.secretName)}</code>. You can close this page.</p>`))
+    res.status(200).send(htmlPage('Stored', `
+      <div style="text-align:center; padding:40px 20px;">
+        <div style="font-size:64px; margin-bottom:20px;">✅</div>
+        <h1 style="color:#16a34a; margin-bottom:16px;">Secret Stored Successfully</h1>
+        <p style="font-size:18px; color:#374151; margin-bottom:8px;"><strong>${escapeHtml(r.secretName)}</strong> has been saved.</p>
+        <p style="color:#6b7280;">You can safely close this page.</p>
+      </div>
+    `))
   } catch {
     res.status(500).send(htmlPage('Error', `<h1>Failed to store secret</h1><p class="muted">Internal error while storing the secret.</p>`))
   }
