@@ -156,6 +156,10 @@ export async function createServer(
 
   // --- Static assets (no auth required) ---
   app.get('/static/requests.js', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
+    res.setHeader('Surrogate-Control', 'no-store')
     res.type('application/javascript').send(`// ClawVault request form UX helpers
 (() => {
   function byId(id){ return document.getElementById(id); }
@@ -240,6 +244,7 @@ export async function createServer(
 
   // Logo asset (embedded to avoid filesystem path issues in ESM builds)
   app.get('/static/logo.jpg', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=3600')
     const buf = Buffer.from(CLAWVAULT_LOGO_JPG_BASE64, 'base64')
     res.type('image/jpeg').send(buf)
   })

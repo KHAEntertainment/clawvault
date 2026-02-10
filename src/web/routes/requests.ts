@@ -98,7 +98,7 @@ export async function requestForm(req: Request, res: Response, store: SecretRequ
       </form>
     </div>
 
-    <script src="/static/requests.js" defer></script>
+    <script src="/static/requests.js?v=3" defer></script>
   `))
 }
 
@@ -139,7 +139,7 @@ export async function requestSubmit(req: Request, res: Response, store: SecretRe
         <p id="closeMsg" class="muted" style="margin-top:10px;"></p>
       </div>
 
-      <script src="/static/requests.js" defer></script>
+      <script src="/static/requests.js?v=3" defer></script>
     `))
   } catch {
     res.status(500).send(htmlPage('Error', `<h1>Failed to store secret</h1><p class="muted">Internal error while storing the secret.</p>`))
