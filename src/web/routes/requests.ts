@@ -69,12 +69,12 @@ export function requestForm(req: Request, res: Response, store: SecretRequestSto
   const labelLine = r.label ? `<p class="muted">${escapeHtml(r.label)}</p>` : ''
 
   res.status(200).send(htmlPage('Submit secret', `
-    <header style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
-      <img src="/static/logo.jpg" alt="ClawVault" width="56" height="56" style="display:block;" />
-      <div>
-        <div style="font-weight:800; font-size:22px; line-height:1;">ClawVault</div>
-        <div class="muted" style="margin-top:4px;">Secure secret submission</div>
-      </div>
+    <header style="margin-bottom:18px;">
+      <img
+        src="/static/logo.jpg"
+        alt="ClawVault"
+        style="display:block; width:100%; max-width:720px; height:auto; margin:0 auto;"
+      />
     </header>
 
     <h1 style="margin-top:0;">Submit secret</h1>
@@ -112,9 +112,12 @@ export async function requestSubmit(req: Request, res: Response, store: SecretRe
   try {
     await storage.set(r.secretName, secretValue)
     res.status(200).send(htmlPage('Stored', `
-      <header style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:18px;">
-        <img src="/static/logo.jpg" alt="ClawVault" width="56" height="56" style="display:block;" />
-        <div style="font-weight:800; font-size:22px;">ClawVault</div>
+      <header style="margin-bottom:18px;">
+        <img
+          src="/static/logo.jpg"
+          alt="ClawVault"
+          style="display:block; width:100%; max-width:720px; height:auto; margin:0 auto;"
+        />
       </header>
       <div style="text-align:center; padding:18px 20px 40px;">
         <div style="font-size:64px; margin-bottom:20px;">✅</div>
