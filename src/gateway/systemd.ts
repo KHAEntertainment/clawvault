@@ -141,11 +141,19 @@ export class SystemdManager {
 
     try {
       return await execSystemctlCapture([this.userFlag, 'status', safeService])
-    } catch (error: unknown) {
-      if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {
-        return error.stdout
-      }
-      throw new SystemdError(`Failed to get status for: ${safeService}`, safeService, error)
+    } catch (error: any) {
+      const stdout = (error?.stdout ?? '').toString()
+      const stderr = (error?.stderr ?? '').toString()
+
+      // If systemctl produced a status output, return it (useful for debugging failed services).
+      if (stdout.trim()) return stdout
+
+      // For missing/non-existent services, systemctl often returns empty stdout.
+      throw new SystemdError(
+        `Failed to get status for: ${safeService}${stderr.trim() ? ` (${stderr.trim()})` : ''}`,
+        safeService,
+        error
+      )
     }
   }
 

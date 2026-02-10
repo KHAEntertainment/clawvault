@@ -44,7 +44,6 @@ import helmet from 'helmet'
 import cors from 'cors'
 import rateLimit from 'express-rate-limit'
 import { type StorageProvider } from '../storage/index.js'
-import { join } from 'path'
 import { submitSecret } from './routes/submit.js'
 import { statusRoute } from './routes/status.js'
 import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.js'
@@ -159,7 +158,38 @@ export async function createServer(
 
   // --- HTML forms ---
   app.get('/', (_req: Request, res: Response) => {
-    res.sendFile(join(__dirname, 'routes', 'templates', 'form.html'))
+    // Serve a minimal UI inline to avoid filesystem path issues in ESM builds.
+    // (One-time request flow lives under /requests/:id.)
+    res.status(200).type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClawVault Web UI</title>
+  <style>
+    body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; max-width: 720px; margin: 40px auto; padding: 0 16px;}
+    code{background:#f4f4f5;padding:2px 6px;border-radius:6px;}
+    .card{border:1px solid #e4e4e7;border-radius:12px;padding:16px;}
+    .muted{color:#52525b;}
+    input{width:100%;padding:10px;border:1px solid #d4d4d8;border-radius:10px;}
+    button{padding:10px 14px;border-radius:10px;border:0;background:#111827;color:#fff;cursor:pointer;}
+  </style>
+</head>
+<body>
+  <h1>ClawVault Web UI</h1>
+  <p class="muted">This server stores secrets directly to your OS keyring / system credentials store.</p>
+
+  <div class="card">
+    <h2>API access</h2>
+    <p class="muted">Use the bearer token printed in your terminal.</p>
+    <p><code>POST /api/submit</code> (auth required)</p>
+    <p><code>POST /api/requests</code> (auth required)</p>
+    <p><code>GET /requests/:id</code> (no auth)</p>
+  </div>
+
+  <p class="muted" style="margin-top:16px;">Tip: For the best UX, use <code>clawvault request SECRET_NAME</code> and share the generated one-time link.</p>
+</body>
+</html>`)
   })
 
   // One-time request pages do NOT require bearer token

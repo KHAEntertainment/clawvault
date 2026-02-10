@@ -92,7 +92,12 @@ export class LinuxKeyringProvider implements StorageProvider {
    */
   async delete(name: string): Promise<void> {
     this.validateName(name)
-    await execFileCommand('secret-tool', ['remove', 'service', SERVICE, 'key', name])
+    try {
+      await execFileCommand('secret-tool', ['remove', 'service', SERVICE, 'key', name])
+    } catch {
+      // If it doesn't exist, treat as already-deleted.
+      return
+    }
   }
 
   /**

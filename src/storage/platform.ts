@@ -77,7 +77,8 @@ async function commandExistsWindows(cmd: string): Promise<boolean> {
 async function linuxSecretToolUsable(): Promise<boolean> {
   try {
     await execFileAsync('secret-tool', ['search', '--all', 'service', 'clawvault'], { timeout: 5_000 })
-    return true
+    // Even if search works, storing may fail if the default collection is missing.
+    return await linuxSecretToolWritable()
   } catch (err: any) {
     const stderr = (err?.stderr ?? '').toString()
     const stdout = (err?.stdout ?? '').toString()
@@ -87,7 +88,17 @@ async function linuxSecretToolUsable(): Promise<boolean> {
     const looksLikeNoResults =
       stderr.trim() === '' && stdout.trim() === '' && typeof err?.code === 'number'
 
-    if (looksLikeNoResults) return true
+    if (looksLikeNoResults) {
+      return await linuxSecretToolWritable()
+    }
+
+    // Common misconfiguration: Secret Service reachable but default collection missing.
+    if (
+      stderr.includes('Object does not exist at path') ||
+      stderr.includes('/org/freedesktop/secrets/collection/login')
+    ) {
+      return false
+    }
 
     // Headless / no session bus scenarios.
     if (
@@ -99,6 +110,29 @@ async function linuxSecretToolUsable(): Promise<boolean> {
     }
 
     // Conservative: if something else went wrong, treat as not usable.
+    return false
+  }
+}
+
+async function linuxSecretToolWritable(): Promise<boolean> {
+  const probeKey = '__CLAWVAULT_PROBE__'
+  try {
+    // Use a minimal store+clear probe to ensure the default collection exists and is writable.
+    await execFileAsync('sh', [
+      '-lc',
+      `printf probe | secret-tool store --label='ClawVault probe' service clawvault key ${probeKey}`
+    ], { timeout: 5_000 })
+    await execFileAsync('secret-tool', ['clear', 'service', 'clawvault', 'key', probeKey], { timeout: 5_000 })
+    return true
+  } catch (err: any) {
+    const stderr = (err?.stderr ?? '').toString()
+    if (
+      stderr.includes('Object does not exist at path') ||
+      stderr.includes('/org/freedesktop/secrets/collection/login')
+    ) {
+      return false
+    }
+    // Any other failure: treat as not writable.
     return false
   }
 }
