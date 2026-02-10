@@ -43,6 +43,12 @@ clawvault request OPENAI_API_KEY --port 3000
 
 Scan OpenClaw's auth-profiles.json and migrate plaintext credentials to encrypted storage.
 
+### ⚠️ Important Limitation
+
+**OpenClaw's `auth-profiles.json` does not support environment variable substitution.** OAuth tokens will break if migrated to `${ENV_VAR}` format because OpenClaw parses them as JWTs.
+
+**Current status:** Plaintext credentials with filesystem permissions (0600) for single-user deployments. See [ROADMAP.md](ROADMAP.md) for upstream issue tracking and planned eCryptfs alternative.
+
 ### Safe Migration Workflow
 
 ```bash
@@ -86,6 +92,7 @@ npx clawvault <command>
 - [Migration Guide](docs/MIGRATION.md) — Migrate from OpenClaw plaintext
 - [Security Model](docs/SECURITY.md) — Threat model and guarantees
 - [CLI Reference](docs/CLI.md) — All commands and options
+- [Roadmap](ROADMAP.md) — Future plans and known limitations
 
 ## License
 
