@@ -165,6 +165,27 @@ export async function createServer(
   }
 
   window.addEventListener('DOMContentLoaded', () => {
+    // Close button on success page
+    const closeBtn = byId('closeBtn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        const closeMsg = byId('closeMsg');
+        // Attempt to close (works reliably for scripted windows). For normal tabs,
+        // most mobile browsers will ignore window.close().
+        window.close();
+
+        // Fallback: guide user + offer a back-nav if close is blocked.
+        setTimeout(() => {
+          try {
+            if (closeMsg) closeMsg.textContent = 'If this page didn\'t close, use your browser\'s back button or close the tab.';
+            // history.back() is a friendlier fallback than doing nothing.
+            history.back();
+          } catch {}
+        }, 200);
+      });
+    }
+
+    // Request form submit UX
     const form = byId('secretForm');
     const btn = byId('submitBtn');
     const msg = byId('statusMsg');

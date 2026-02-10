@@ -120,8 +120,13 @@ export async function requestSubmit(req: Request, res: Response, store: SecretRe
         <div style="font-size:64px; margin-bottom:20px;">✅</div>
         <h1 style="color:#16a34a; margin-bottom:16px;">Secret Stored Successfully</h1>
         <p style="font-size:18px; color:#374151; margin-bottom:8px;"><strong>${escapeHtml(r.secretName)}</strong> has been saved.</p>
-        <p style="color:#6b7280;">You can safely close this page.</p>
+        <p style="color:#6b7280; margin-bottom:16px;">You can safely close this page.</p>
+
+        <button type="button" id="closeBtn" style="min-width: 220px;">Close</button>
+        <p id="closeMsg" class="muted" style="margin-top:10px;"></p>
       </div>
+
+      <script src="/static/requests.js" defer></script>
     `))
   } catch {
     res.status(500).send(htmlPage('Error', `<h1>Failed to store secret</h1><p class="muted">Internal error while storing the secret.</p>`))
