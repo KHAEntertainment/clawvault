@@ -109,7 +109,11 @@ export async function createServer(
         imgSrc: ["'self'"],
         connectSrc: ["'self'"],
         formAction: ["'self'"],
-        frameAncestors: ["'none'"]
+        frameAncestors: ["'none'"],
+        // IMPORTANT: helmet enables `upgrade-insecure-requests` by default, which breaks
+        // HTTP-only (no TLS) tailscale/localhost deployments by rewriting subresource loads
+        // and form posts to https.
+        ...(options.tls ? {} : { upgradeInsecureRequests: null })
       }
     },
     hsts: options.tls ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -154,16 +158,33 @@ export async function createServer(
     res.type('application/javascript').send(`// ClawVault request form UX helpers
 (() => {
   function byId(id){ return document.getElementById(id); }
+  function setStatus(btn, msg, text){
+    if (btn) { btn.disabled = true; btn.textContent = 'Storing...'; }
+    if (msg) { msg.textContent = text; }
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
     const form = byId('secretForm');
     const btn = byId('submitBtn');
     const msg = byId('statusMsg');
-    if (!form || !btn || !msg) return;
+    if (!form) return;
 
-    form.addEventListener('submit', () => {
-      btn.disabled = true;
-      btn.textContent = 'Storing...';
-      msg.textContent = 'Submitting... please wait';
+    form.addEventListener('submit', async (e) => {
+      // Prevent immediate navigation so the user actually sees feedback.
+      e.preventDefault();
+      setStatus(btn, msg, 'Submitting... please wait');
+
+      try {
+        const body = new FormData(form);
+        const resp = await fetch(form.action, { method: 'POST', body, credentials: 'same-origin' });
+        const html = await resp.text();
+        document.open();
+        document.write(html);
+        document.close();
+      } catch {
+        if (msg) msg.textContent = 'Network error. Please retry.';
+        if (btn) { btn.disabled = false; btn.textContent = 'Store secret'; }
+      }
     });
   });
 })();
