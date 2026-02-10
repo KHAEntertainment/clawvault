@@ -128,7 +128,9 @@ function getOAuthSecretFields(): string[] {
     'idToken',
     'token',
     'secret',
-    'clientSecret'
+    'clientSecret',
+    'access',      // OpenClaw uses 'access' for OAuth access token
+    'refresh'      // OpenClaw uses 'refresh' for OAuth refresh token
   ]
 }
 
