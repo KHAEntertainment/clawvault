@@ -175,12 +175,26 @@ export async function createServer(
       setStatus(btn, msg, 'Submitting... please wait');
 
       try {
-        const body = new FormData(form);
-        const resp = await fetch(form.action, { method: 'POST', body, credentials: 'same-origin' });
-        const html = await resp.text();
-        document.open();
-        document.write(html);
-        document.close();
+        // Server expects application/x-www-form-urlencoded (express.urlencoded).
+        const body = new URLSearchParams(new FormData(form) as any);
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          body,
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }
+        });
+
+        if (resp.ok) {
+          const html = await resp.text();
+          document.open();
+          document.write(html);
+          document.close();
+          return;
+        }
+
+        // Keep user on the same page for simple validation failures.
+        if (msg) msg.textContent = 'Invalid submission. Please check the value and retry.';
+        if (btn) { btn.disabled = false; btn.textContent = 'Store secret'; }
       } catch {
         if (msg) msg.textContent = 'Network error. Please retry.';
         if (btn) { btn.disabled = false; btn.textContent = 'Store secret'; }
