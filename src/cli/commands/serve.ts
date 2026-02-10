@@ -22,6 +22,7 @@ interface ServeOptions {
   tls?: boolean
   cert?: string
   key?: string
+  allowInsecureHttp?: boolean
 }
 
 export const serveCommand = new Command('serve')
@@ -31,6 +32,7 @@ export const serveCommand = new Command('serve')
   .option('--tls', 'Enable HTTPS')
   .option('--cert <path>', 'TLS certificate path')
   .option('--key <path>', 'TLS key path')
+  .option('--allow-insecure-http', 'Allow binding non-localhost over HTTP (strongly discouraged)', false)
   .action(async (options: ServeOptions) => {
     const port = parseInt(options.port, 10)
 
@@ -64,13 +66,37 @@ export const serveCommand = new Command('serve')
 
     const storage = await createStorage()
 
-    if (!webModule.isLocalhostBinding(options.host)) {
+    // Policy: refuse insecure HTTP on non-localhost unless Tailscale or explicit override.
+    if (!options.tls) {
+      const policy = webModule.decideInsecureHttpPolicy(options.host, options.allowInsecureHttp ?? false)
+      if (!policy.allow) {
+        console.log(chalk.red('Refusing to start: binding a secret-submission server to a non-localhost address over HTTP is unsafe.'))
+        console.log(chalk.gray('Use Tailscale (recommended) or enable TLS via --tls --cert --key.'))
+        console.log(chalk.gray('To override (strongly discouraged), pass --allow-insecure-http.'))
+        process.exit(1)
+      }
+
+      if (policy.reason === 'tailscale') {
+        console.log('')
+        console.log(chalk.yellow('WARNING: Binding over HTTP on a Tailscale address.'))
+        console.log(chalk.gray('This is acceptable on a private tailnet, but TLS is still recommended when possible.'))
+        console.log('')
+      }
+
+      if (policy.reason === 'override') {
+        console.log('')
+        console.log(chalk.red('╔══════════════════════════════════════════════════════════════╗'))
+        console.log(chalk.red('║  DANGEROUS: Insecure HTTP enabled (non-localhost binding)    ║'))
+        console.log(chalk.red('║  Anyone on the network can submit secrets to your keyring.   ║'))
+        console.log(chalk.red('║  Strongly recommended: use Tailscale or enable TLS.          ║'))
+        console.log(chalk.red('╚══════════════════════════════════════════════════════════════╝'))
+        console.log(chalk.gray('If you do not have Tailscale installed, install it before using remote secret submission.'))
+        console.log('')
+      }
+    } else if (!webModule.isLocalhostBinding(options.host)) {
       console.log('')
-      console.log(chalk.red('╔══════════════════════════════════════════════════════════════╗'))
-      console.log(chalk.red('║  WARNING: Binding to a non-localhost address!               ║'))
-      console.log(chalk.red('║  This exposes the secret-submission endpoint to the network. ║'))
-      console.log(chalk.red('║  Only do this on a trusted, firewalled network.             ║'))
-      console.log(chalk.red('╚══════════════════════════════════════════════════════════════╝'))
+      console.log(chalk.yellow('Binding to a non-localhost address with TLS enabled.'))
+      console.log(chalk.gray('Ensure your certificate is valid and the host is not exposed unintentionally.'))
       console.log('')
     }
 
@@ -89,12 +115,12 @@ export const serveCommand = new Command('serve')
             cert: options.cert!,
             key: options.key!
           }
-        })
+        }),
+        allowInsecureHttp: options.allowInsecureHttp ?? false,
       })
 
-      const protocol = options.tls ? 'https' : 'http'
       console.log('')
-      console.log(chalk.green(`Server running at ${protocol}://${options.host}:${port}`))
+      console.log(chalk.green(`Server running at ${result.origin}`))
       console.log('')
       console.log(chalk.yellow('API Bearer Token (include in Authorization header):'))
       console.log(chalk.bold(result.token))
