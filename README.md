@@ -17,7 +17,7 @@ clawvault request SECRET_NAME --host 100.x.x.x --port 3000
 
 ## Secret Submission via Secure Link (Confidant-Style)
 
-The safest way to receive secrets. Creates a one-time URL where users can submit credentials directly to encrypted storage — no chat logs, no context exposure.
+The safest way to receive secrets. Creates a one-time URL via tailscale or https (if enabled) where users can submit credentials directly to encrypted storage — no chat logs, no context exposure.
 
 ### Basic Usage
 
@@ -41,7 +41,8 @@ clawvault request OPENAI_API_KEY --port 3000
 
 ## Migrate Existing Secrets
 
-Scan OpenClaw's auth-profiles.json and migrate plaintext credentials to encrypted storage.
+Scan OpenClaw's auth-profiles.json and openclaw.json and migrate plaintext credentials to encrypted storage. 
+Currently working with API keys and general secrets. oAuth Credential Migration is a work in progress.
 
 ### ⚠️ Important Limitation
 
