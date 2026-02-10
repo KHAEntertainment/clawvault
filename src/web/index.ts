@@ -159,8 +159,8 @@ export async function createServer(
     res.type('application/javascript').send(`// ClawVault request form UX helpers
 (() => {
   function byId(id){ return document.getElementById(id); }
-  function setStatus(btn, msg, text){
-    if (btn) { btn.disabled = true; btn.textContent = 'Storing...'; }
+  function setStatus(btn, msg, text, workingLabel){
+    if (btn) { btn.disabled = true; btn.textContent = workingLabel || 'Working...'; }
     if (msg) { msg.textContent = text; }
   }
 
@@ -174,14 +174,14 @@ export async function createServer(
         // most mobile browsers will ignore window.close().
         window.close();
 
-        // Fallback: guide user + offer a back-nav if close is blocked.
+        // Fallback: many mobile browsers block closing a regular tab.
+        // In that case, at least clear the page and show a helpful message.
         setTimeout(() => {
           try {
-            if (closeMsg) closeMsg.textContent = 'If this page didn\'t close, use your browser\'s back button or close the tab.';
-            // history.back() is a friendlier fallback than doing nothing.
-            history.back();
+            if (closeMsg) closeMsg.textContent = 'All set. You can close this tab.';
+            window.location.replace('about:blank');
           } catch {}
-        }, 200);
+        }, 150);
       });
     }
 
@@ -194,7 +194,10 @@ export async function createServer(
     form.addEventListener('submit', async (e) => {
       // Prevent immediate navigation so the user actually sees feedback.
       e.preventDefault();
-      setStatus(btn, msg, 'Submitting... please wait');
+
+      const mode = (form.dataset && form.dataset.mode) ? form.dataset.mode : 'create';
+      const workingLabel = mode === 'update' ? 'Updating...' : 'Storing...';
+      setStatus(btn, msg, mode === 'update' ? 'Updating... please wait' : 'Submitting... please wait', workingLabel);
 
       try {
         // Server expects application/x-www-form-urlencoded (express.urlencoded).
@@ -216,10 +219,18 @@ export async function createServer(
 
         // Keep user on the same page for simple validation failures.
         if (msg) msg.textContent = 'Invalid submission. Please check the value and retry.';
-        if (btn) { btn.disabled = false; btn.textContent = 'Store secret'; }
+        if (btn) {
+          const def = (btn.dataset && btn.dataset.defaultText) ? btn.dataset.defaultText : 'Submit';
+          btn.disabled = false;
+          btn.textContent = def;
+        }
       } catch {
         if (msg) msg.textContent = 'Network error. Please retry.';
-        if (btn) { btn.disabled = false; btn.textContent = 'Store secret'; }
+        if (btn) {
+          const def = (btn.dataset && btn.dataset.defaultText) ? btn.dataset.defaultText : 'Submit';
+          btn.disabled = false;
+          btn.textContent = def;
+        }
       }
     });
   });
@@ -281,7 +292,9 @@ export async function createServer(
 
   // One-time request pages do NOT require bearer token
   // Apply rate limiting to submission endpoint
-  app.get('/requests/:id', (req: Request, res: Response) => requestForm(req, res, requestStore))
+  app.get('/requests/:id', (req: Request, res: Response, next: NextFunction) => {
+    requestForm(req, res, requestStore, storage).catch(next)
+  })
   app.post('/requests/:id/submit', submitLimiter, express.urlencoded({ extended: true }), (req: Request, res: Response, next: NextFunction) => {
     requestSubmit(req, res, requestStore, storage).catch(next)
   })
