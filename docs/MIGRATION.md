@@ -28,19 +28,35 @@ These files may contain **plaintext secrets**:
 4. Replaces values with `${ENV_VAR}` placeholders
 5. Creates backups before any changes
 
-**Result:**
+**Intended result (not currently supported by OpenClaw):**
 ```json
 {
   "profiles": {
     "openai:default": {
-      "type": "api_key", 
+      "type": "api_key",
       "key": "${OPENCLAW_OPENAI_OPENAI_DEFAULT_KEY}"
     }
   }
 }
 ```
 
+OpenClaw does not expand `${...}` placeholders in `auth-profiles.json` today. See the critical limitation section below.
+
 ---
+
+## ⚠️ Critical Limitation: OpenClaw does *not* expand ${ENV_VAR} in auth-profiles.json
+
+Today, **OpenClaw treats `${ENV_VAR}` strings in `auth-profiles.json` as literal text** — it does not perform environment-variable substitution when reading credentials.
+
+**What this means:**
+- Running `clawvault openclaw migrate --apply` will rewrite `auth-profiles.json` with `${...}` placeholders.
+- OpenClaw will then try to use those placeholder strings as the actual credential value, and authentication will fail.
+
+**Multi-agent pitfall:** if you have multiple agents, each agent has its own `auth-profiles.json`. A single "apply" migration can break all of them at once.
+
+**OAuth is especially brittle:** even if OpenClaw gains env expansion in the future, OAuth token handling may validate/parse token-looking strings before expansion. Treat OAuth placeholder migration as unsupported.
+
+**Recommendation:** use `clawvault openclaw migrate` as a **discovery/dry-run scanner only** until OpenClaw supports env-var substitution (or ClawVault gains a supported runtime integration path).
 
 ## Safe Migration Workflow
 
@@ -98,6 +114,10 @@ Check the dry-run output:
 - Is the count correct?
 
 ### Step 4: Apply Migration
+
+**⚠️ Not recommended right now.** See the critical limitation above: OpenClaw will not expand `${ENV_VAR}` placeholders from `auth-profiles.json`.
+
+Only run this if you're intentionally rewriting the file for a custom runtime that *does* expand placeholders.
 
 ```bash
 clawvault openclaw migrate --apply --verbose
@@ -216,6 +236,8 @@ clawvault openclaw restore /path/to/backup.bak.12345 --yes
 
 ## What Gets Migrated
 
+> Note: This section describes what ClawVault can *detect and store*. It does **not** guarantee that OpenClaw will successfully *consume* `${ENV_VAR}` placeholders from `auth-profiles.json` today.
+
 ### Supported Types
 
 | Type | Fields Migrated | Example ENV Name |
@@ -277,7 +299,7 @@ cat ~/.openclaw/agents/main/agent/auth-profiles.json | jq
 
 ### Gateway won't start after migration
 
-**Cause:** ENV var resolution failure.
+**Cause:** `auth-profiles.json` now contains `${ENV_VAR}` placeholders, but OpenClaw does not expand them (it treats them as literal strings).
 
 **Immediate fix:**
 ```bash
