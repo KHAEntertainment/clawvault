@@ -121,7 +121,9 @@ clawvault request OPENAI_API_KEY \
 
 ### `openclaw migrate`
 
-Migrate plaintext secrets from auth-profiles.json to encrypted storage.
+Migrate plaintext secrets from auth-profiles.json to encrypted storage (**experimental**).
+
+⚠️ **Important:** OpenClaw does not currently expand `${ENV_VAR}` placeholders in `auth-profiles.json`. Using `--apply` will rewrite the file into a format OpenClaw cannot use. Prefer dry-run mode until upstream support exists.
 
 ```bash
 # Dry-run (safe, shows what will migrate)

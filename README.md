@@ -46,7 +46,12 @@ Currently working with API keys and general secrets. oAuth Credential Migration 
 
 ### ⚠️ Important Limitation
 
-**OpenClaw's `auth-profiles.json` does not support environment variable substitution.** OAuth tokens will break if migrated to `${ENV_VAR}` format because OpenClaw parses them as JWTs.
+**OpenClaw's `auth-profiles.json` does not support environment variable substitution.** `${ENV_VAR}` placeholders are treated as literal strings.
+
+- This means `clawvault openclaw migrate --apply` will rewrite `auth-profiles.json` into a format OpenClaw cannot use (authentication will fail).
+- **OAuth is especially brittle:** placeholder strings may be validated/parsed as tokens before any future expansion.
+
+**Recommendation:** use `clawvault openclaw migrate` as a **dry-run scanner only** until OpenClaw supports env-var substitution (or ClawVault gains a supported runtime integration path).
 
 **Current status:** Plaintext credentials with filesystem permissions (0600) for single-user deployments. See [ROADMAP.md](ROADMAP.md) for upstream issue tracking and planned eCryptfs alternative.
 
