@@ -113,19 +113,23 @@ export async function saveConfig(config: ConfigSchema): Promise<void> {
     )
   }
 
+  let tmpPath: string | undefined
   try {
     // Ensure config directory exists
     await fs.mkdir(CONFIG_DIR, { recursive: true })
 
     // Write with pretty-printing (2-space indent)
     // Use atomic write to avoid readers seeing partially-written JSON.
-    const tmpPath = join(CONFIG_DIR, `secrets.json.tmp.${process.pid}.${Date.now()}`)
+    tmpPath = join(CONFIG_DIR, `secrets.json.tmp.${process.pid}.${Date.now()}`)
     await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), {
       encoding: 'utf-8',
       mode: 0o600
     })
     await fs.rename(tmpPath, CONFIG_PATH)
   } catch (error: unknown) {
+    if (tmpPath) {
+      await fs.unlink(tmpPath).catch(() => {})
+    }
     const message = error instanceof Error ? error.message : 'Unknown error'
     throw new ConfigWriteError(message, error)
   }
