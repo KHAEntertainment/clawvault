@@ -61,7 +61,7 @@ Currently working with API keys and general secrets. oAuth Credential Migration 
 # Step 1: Simulate (see what will migrate)
 clawvault openclaw migrate --verbose
 
-# Step 2: Apply (backs up originals first)
+# Step 2: Apply (⚠️ not recommended until env-var expansion is supported — see above)
 clawvault openclaw migrate --apply --verbose
 
 # Step 3: If anything breaks, restore

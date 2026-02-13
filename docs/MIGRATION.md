@@ -89,6 +89,8 @@ planner
 Re-run with --apply to write secrets to the keyring and update auth-profiles.json.
 ```
 
+> **Note:** The above output reflects the actual CLI output. However, `--apply` is **not recommended** due to the critical limitation described above — OpenClaw does not expand environment variables in `auth-profiles.json`.
+
 ### Step 2: Generate Restore Command
 
 **SAVE THIS COMMAND.** You'll need it if migration fails.
