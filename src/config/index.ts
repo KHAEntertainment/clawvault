@@ -128,6 +128,7 @@ export async function saveConfig(config: ConfigSchema): Promise<void> {
     await fs.rename(tmpPath, CONFIG_PATH)
   } catch (error: unknown) {
     if (tmpPath) {
+      // Best-effort cleanup: ignore errors since the primary error is more important
       await fs.unlink(tmpPath).catch(() => {})
     }
     const message = error instanceof Error ? error.message : 'Unknown error'
