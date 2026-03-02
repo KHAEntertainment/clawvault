@@ -33,6 +33,7 @@ Then run the full operator flow:
 ```bash
 clawvault add providers/openai/apiKey
 openclaw secrets configure
+openclaw secrets apply
 openclaw secrets reload
 ```
 

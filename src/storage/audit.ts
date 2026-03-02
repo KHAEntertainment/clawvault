@@ -106,11 +106,11 @@ export class AuditedStorageProvider implements StorageProvider {
 
   async getRawAccount?(account: string): Promise<string | null> {
     const rawProvider = this.inner as StorageProvider & Partial<RawAccountLookupProvider>
-    if (typeof rawProvider.getRawAccount !== 'function') {
-      throw new Error('Raw account lookup is not supported by this storage provider')
-    }
-
     try {
+      if (typeof rawProvider.getRawAccount !== 'function') {
+        throw new Error('Raw account lookup is not supported by this storage provider')
+      }
+
       const result = await rawProvider.getRawAccount(account)
       this.emit({ timestamp: new Date().toISOString(), operation: 'get', secretName: account, success: true })
       return result

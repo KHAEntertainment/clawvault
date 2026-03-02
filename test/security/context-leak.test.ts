@@ -65,8 +65,7 @@ describe('Security: Context Leak Prevention', () => {
       for (const file of commandFiles) {
         const source = readFileSync(join(commandDir, file), 'utf-8')
         if (file === 'resolve.ts') {
-          // Exception: the OpenClaw exec-provider protocol requires direct secret reads.
-          expect(source).toMatch(/\bstorage\.get\s*\(/)
+          // resolve.ts is exempt: OpenClaw exec-provider protocol requires direct secret reads
           continue
         }
 

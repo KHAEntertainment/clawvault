@@ -92,7 +92,9 @@ async function resolveRequestIds(
       debugLog(stderr, debug, `hit: ${id}`)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'keychain lookup failed'
-      throw new Error(`Failed to resolve "${id}": ${message}`)
+      errors[id] = { message }
+      debugLog(stderr, debug, `error: ${id}: ${message}`)
+      continue
     }
   }
 
@@ -106,7 +108,10 @@ async function resolveRequestIds(
 async function lookupSecretById(storage: StorageProvider, id: string): Promise<string | null> {
   const rawLookupStorage = storage as StorageProvider & Partial<RawAccountLookupProvider>
   if (typeof rawLookupStorage.getRawAccount === 'function') {
-    return rawLookupStorage.getRawAccount(id)
+    const result = await rawLookupStorage.getRawAccount(id)
+    if (result !== null && result !== undefined && result !== '') {
+      return result
+    }
   }
 
   return storage.get(id)
