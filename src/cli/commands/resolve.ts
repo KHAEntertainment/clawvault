@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { createStorage } from '../../storage/index.js'
-import type { StorageProvider } from '../../storage/interfaces.js'
+import type { RawAccountLookupProvider, StorageProvider } from '../../storage/interfaces.js'
 
 interface ResolveOptions {
   debug?: boolean
@@ -81,7 +81,7 @@ async function resolveRequestIds(
 
   for (const id of request.ids) {
     try {
-      const value = await storage.get(id)
+      const value = await lookupSecretById(storage, id)
       if (value === null) {
         errors[id] = { message: 'not found in keychain' }
         debugLog(stderr, debug, `miss: ${id}`)
@@ -101,6 +101,15 @@ async function resolveRequestIds(
     values,
     ...(Object.keys(errors).length > 0 ? { errors } : {}),
   }
+}
+
+async function lookupSecretById(storage: StorageProvider, id: string): Promise<string | null> {
+  const rawLookupStorage = storage as StorageProvider & Partial<RawAccountLookupProvider>
+  if (typeof rawLookupStorage.getRawAccount === 'function') {
+    return rawLookupStorage.getRawAccount(id)
+  }
+
+  return storage.get(id)
 }
 
 async function readStdin(stdin: NodeJS.ReadableStream): Promise<string> {

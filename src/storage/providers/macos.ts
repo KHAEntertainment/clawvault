@@ -22,9 +22,9 @@
  */
 
 import { execFile } from 'child_process'
-import { StorageProvider } from '../interfaces.js'
+import { RawAccountLookupProvider, StorageProvider } from '../interfaces.js'
 
-const ACCOUNT = 'clawvault'
+const SERVICE = 'clawvault'
 const EXEC_TIMEOUT_MS = 10_000
 const EXEC_MAX_BUFFER_BYTES = 1 * 1024 * 1024
 
@@ -50,7 +50,7 @@ function execFileAsync(
   })
 }
 
-export class MacOSKeychainProvider implements StorageProvider {
+export class MacOSKeychainProvider implements StorageProvider, RawAccountLookupProvider {
   private validateName(name: string): void {
     if (!SAFE_NAME_PATTERN.test(name)) {
       throw new Error(`Invalid secret name: ${name}`)
@@ -72,7 +72,7 @@ export class MacOSKeychainProvider implements StorageProvider {
 
     const args = [
       'add-generic-password',
-      '-a', ACCOUNT,
+      '-a', SERVICE,
       '-s', name,
       '-w', value,
       '-D', label,
@@ -99,11 +99,19 @@ export class MacOSKeychainProvider implements StorageProvider {
    */
   async get(name: string): Promise<string | null> {
     this.validateName(name)
+    return this.getByServiceAndAccount(name, SERVICE)
+  }
+
+  async getRawAccount(account: string): Promise<string | null> {
+    return this.getByServiceAndAccount(SERVICE, account)
+  }
+
+  private async getByServiceAndAccount(service: string, account: string): Promise<string | null> {
     try {
       const { stdout } = await execFileAsync('security', [
         'find-generic-password',
-        '-a', ACCOUNT,
-        '-s', name,
+        '-a', account,
+        '-s', service,
         '-w'
       ])
       return stdout.trim() || null
@@ -120,7 +128,7 @@ export class MacOSKeychainProvider implements StorageProvider {
     try {
       await execFileAsync('security', [
         'delete-generic-password',
-        '-a', ACCOUNT,
+        '-a', SERVICE,
         '-s', name
       ])
     } catch {
@@ -172,7 +180,7 @@ export class MacOSKeychainProvider implements StorageProvider {
     const entries = output.split('keychain:')
     for (const entry of entries) {
       const acctMatch = entry.match(/"acct"<blob>="([^"]*)"/)
-      if (!acctMatch || acctMatch[1] !== ACCOUNT) continue
+      if (!acctMatch || acctMatch[1] !== SERVICE) continue
 
       const svceMatch = entry.match(/"svce"<blob>="([^"]*)"/)
       if (svceMatch && svceMatch[1]) {

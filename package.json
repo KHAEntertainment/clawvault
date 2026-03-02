@@ -1,6 +1,6 @@
 {
   "name": "clawvault",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Secure secret management for OpenClaw - combines Confidant UX with Secret Manager security",
   "main": "dist/index.js",

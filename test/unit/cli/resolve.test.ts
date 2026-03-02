@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'stream'
 import { runResolveCommand } from '../../../src/cli/commands/resolve'
-import type { StorageProvider } from '../../../src/storage/interfaces'
+import type { RawAccountLookupProvider, StorageProvider } from '../../../src/storage/interfaces'
 
 class MemoryWritable extends Writable {
   private readonly chunks: Buffer[] = []
@@ -19,6 +19,24 @@ function makeStorage(values: Record<string, string>): StorageProvider {
   return {
     async get(name: string): Promise<string | null> {
       return values[name] ?? null
+    },
+    async set(): Promise<void> {},
+    async delete(): Promise<void> {},
+    async list(): Promise<string[]> { return Object.keys(values) },
+    async has(name: string): Promise<boolean> { return name in values },
+  }
+}
+
+function makeRawLookupStorage(values: Record<string, string>): StorageProvider & RawAccountLookupProvider {
+  return {
+    async get(name: string): Promise<string | null> {
+      if (name.includes('/')) {
+        throw new Error(`Invalid secret name: ${name}`)
+      }
+      return values[name] ?? null
+    },
+    async getRawAccount(account: string): Promise<string | null> {
+      return values[account] ?? null
     },
     async set(): Promise<void> {},
     async delete(): Promise<void> {},
@@ -97,6 +115,35 @@ describe('resolve command', () => {
         'providers/openrouter/apiKey': {
           message: 'not found in keychain',
         },
+      },
+    })
+    expect(stderr.toString()).toBe('')
+    expect(process.exitCode).toBeUndefined()
+  })
+
+  it('resolves slash-based OpenClaw ids through raw account lookup', async () => {
+    const stdout = new MemoryWritable()
+    const stderr = new MemoryWritable()
+    const stdin = Readable.from([
+      JSON.stringify({
+        protocolVersion: 1,
+        provider: 'clawvault',
+        ids: ['providers/openai/apiKey'],
+      }),
+    ])
+
+    await runResolveCommand(
+      {},
+      { stdin, stdout, stderr },
+      async () => makeRawLookupStorage({
+        'providers/openai/apiKey': 'sk-openai',
+      })
+    )
+
+    expect(JSON.parse(stdout.toString())).toEqual({
+      protocolVersion: 1,
+      values: {
+        'providers/openai/apiKey': 'sk-openai',
       },
     })
     expect(stderr.toString()).toBe('')

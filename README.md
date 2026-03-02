@@ -1,74 +1,90 @@
 # ClawVault
 
-Secure secret management for OpenClaw. Store API keys and credentials in your OS-native encrypted keyring — never in plaintext, never in AI context.
+ClawVault is an OS-keychain secrets backend for OpenClaw's native secrets management.
+
+It stores secrets in the platform credential store and implements the OpenClaw exec-provider resolve protocol, so OpenClaw can fetch secret values without keeping them in plaintext config files or chat history.
 
 ## Quick Start
 
+Add the secret you want OpenClaw to resolve:
+
 ```bash
-# Add a secret interactively
-clawvault add OPENAI_API_KEY
-
-# List stored secrets (metadata only)
-clawvault list
-
-# Create a one-time secure link for someone to submit a secret
-clawvault request SECRET_NAME --host 100.x.x.x --port 3000
+clawvault add providers/openai/apiKey
 ```
 
-## Secret Submission via Secure Link (Confidant-Style)
+Configure OpenClaw to use ClawVault as its exec provider. Example `openclaw.json` snippet:
 
-The safest way to receive secrets. Creates a one-time URL via tailscale or https (if enabled) where users can submit credentials directly to encrypted storage — no chat logs, no context exposure.
+```json
+{
+  "secrets": {
+    "provider": {
+      "type": "exec",
+      "command": [
+        "clawvault",
+        "resolve"
+      ]
+    }
+  }
+}
+```
 
-### Basic Usage
+Then run the full operator flow:
+
+```bash
+clawvault add providers/openai/apiKey
+openclaw secrets configure
+openclaw secrets reload
+```
+
+## Secret Submission via Secure Link
+
+The one-time request flow is still available when an operator needs a user to submit a credential directly into secure storage.
 
 ```bash
 # Start ephemeral server and generate link
-clawvault request OPENAI_API_KEY --port 3000
+clawvault request providers/openai/apiKey --port 3000
 
 # Share the printed URL with the user
 # They submit the secret in their browser
-# Server auto-detects and exits when received
+# Server exits after the submission is stored
 ```
 
-**Security features:**
-- ✅ Single-use links (expire after submission)
-- ✅ Configurable TTL (default 15 minutes)
-- ✅ Rate limited to prevent abuse
-- ✅ Works over Tailscale (recommended) or localhost
-- ✅ TLS support for internet-facing deployments
+Security properties:
+- Single-use links
+- Configurable TTL
+- Rate limited submissions
+- Works over localhost or Tailscale
+- TLS support for internet-facing deployments
 
-**See full details:** [docs/SECRET-REQUESTS.md](docs/SECRET-REQUESTS.md)
+See full details: [docs/SECRET-REQUESTS.md](docs/SECRET-REQUESTS.md)
 
-## Migrate Existing Secrets
+## OpenClaw Migrate
 
-Scan OpenClaw's auth-profiles.json and openclaw.json and migrate plaintext credentials to encrypted storage. 
-Currently working with API keys and general secrets. oAuth Credential Migration is a work in progress.
+Deprecated: `clawvault openclaw migrate` remains available as a scanner and migration helper for older plaintext OpenClaw setups, but ClawVault's primary role is now the exec-provider backend.
 
-### ⚠️ Important Limitation
+Scan OpenClaw's `auth-profiles.json` and `openclaw.json` and migrate plaintext credentials to encrypted storage. OAuth credential migration remains incomplete.
 
-**OpenClaw's `auth-profiles.json` does not support environment variable substitution.** `${ENV_VAR}` placeholders are treated as literal strings.
+### Important Limitation
 
-- This means `clawvault openclaw migrate --apply` will rewrite `auth-profiles.json` into a format OpenClaw cannot use (authentication will fail).
-- **OAuth is especially brittle:** placeholder strings may be validated/parsed as tokens before any future expansion.
+OpenClaw's `auth-profiles.json` does not support environment variable substitution. `${ENV_VAR}` placeholders are treated as literal strings.
 
-**Recommendation:** use `clawvault openclaw migrate` as a **dry-run scanner only** until OpenClaw supports env-var substitution (or ClawVault gains a supported runtime integration path).
+- `clawvault openclaw migrate --apply` can rewrite files into a form OpenClaw cannot authenticate with today.
+- OAuth placeholder migration is especially brittle and should be treated as unsupported.
 
-**Current status:** Plaintext credentials with filesystem permissions (0600) for single-user deployments. See [ROADMAP.md](ROADMAP.md) for upstream issue tracking and planned eCryptfs alternative.
-
-### Safe Migration Workflow
+Recommendation: use `clawvault openclaw migrate` as a dry-run scanner unless you have a custom runtime that expands placeholders.
 
 ```bash
-# Step 1: Simulate (see what will migrate)
+# Step 1: Simulate
 clawvault openclaw migrate --verbose
 
-# Step 2: Apply (backs up originals first)
+# Step 2: Apply only if your runtime supports placeholders
 clawvault openclaw migrate --apply --verbose
 
-# Step 3: If anything breaks, restore
+# Step 3: Restore if needed
 clawvault openclaw restore "/path/to/auth-profiles.json.bak.XXX" --yes
 ```
 
-**See full details:** [docs/MIGRATION.md](docs/MIGRATION.md)
+See full details: [docs/MIGRATION.md](docs/MIGRATION.md)
 
 ## Installation
 
@@ -80,25 +96,18 @@ npx clawvault <command>
 
 ## Requirements
 
-- **Linux:** `secret-tool` (GNOME Keyring) or `systemd-creds` (headless)
-- **macOS:** Keychain (built-in)
-- **Windows:** Credential Manager (built-in)
-- **Fallback:** Encrypted file storage (requires `CLAWVAULT_ALLOW_FALLBACK=1`)
-
-## Security Guarantees
-
-1. **Secrets never enter AI context** — direct to OS keyring
-2. **Encrypted at rest** — using platform-native mechanisms
-3. **No plaintext in logs** — only metadata
-4. **Backup before migration** — automatic failsafe
+- Linux: `secret-tool` (GNOME Keyring) or `systemd-creds`
+- macOS: Keychain
+- Windows: Credential Manager
+- Fallback: encrypted file storage with `CLAWVAULT_ALLOW_FALLBACK=1`
 
 ## Documentation
 
-- [Secret Requests](docs/SECRET-REQUESTS.md) — One-time secure links
-- [Migration Guide](docs/MIGRATION.md) — Migrate from OpenClaw plaintext
-- [Security Model](docs/SECURITY.md) — Threat model and guarantees
-- [CLI Reference](docs/CLI.md) — All commands and options
-- [Roadmap](ROADMAP.md) — Future plans and known limitations
+- [Secret Requests](docs/SECRET-REQUESTS.md)
+- [Migration Guide](docs/MIGRATION.md)
+- [Security Model](docs/SECURITY.md)
+- [CLI Reference](docs/CLI.md)
+- [Roadmap](ROADMAP.md)
 
 ## License
 
