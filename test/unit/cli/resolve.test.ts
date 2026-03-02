@@ -201,4 +201,28 @@ describe('resolve command', () => {
     expect(stderr.toString()).toContain('[resolve] hit: providers/openai/apiKey')
     expect(process.exitCode).toBeUndefined()
   })
+
+  it('returns fatal error JSON for unsupported protocolVersion', async () => {
+    const stdout = new MemoryWritable()
+    const stderr = new MemoryWritable()
+    const stdin = Readable.from([
+      JSON.stringify({
+        protocolVersion: 999,
+        provider: 'clawvault',
+        ids: ['providers/openai/apiKey'],
+      }),
+    ])
+
+    await runResolveCommand(
+      {},
+      { stdin, stdout, stderr },
+      async () => makeStorage({ 'providers/openai/apiKey': 'sk-openai' })
+    )
+
+    const output = JSON.parse(stdout.toString())
+    expect(output.protocolVersion).toBe(1)
+    expect(output.error?.message).toMatch(/protocol.?version/i)
+    expect(stderr.toString()).toBe('')
+    expect(process.exitCode).toBe(1)
+  })
 })
