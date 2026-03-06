@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { StorageProvider } from '../interfaces.js'
+import { RawAccountLookupProvider, StorageProvider } from '../interfaces.js'
 /**
  * Service name used in GNOME Keyring for all ClawVault secrets
  */
@@ -25,8 +25,8 @@ function execFileCommand(file: string, args: string[]): Promise<{ stdout: string
  *
  * Uses execFile where possible to avoid shell parsing of untrusted input.
  */
-export class LinuxKeyringProvider implements StorageProvider {
-  private readonly safeNamePattern = /^[A-Z][A-Z0-9_]*$/
+export class LinuxKeyringProvider implements StorageProvider, RawAccountLookupProvider {
+  private readonly safeNamePattern = /^[a-z][a-zA-Z0-9_-]*(\/[a-zA-Z0-9_-]+)*$/
 
   private validateName(name: string): void {
     if (!this.safeNamePattern.test(name)) {
@@ -73,13 +73,21 @@ export class LinuxKeyringProvider implements StorageProvider {
    */
   async get(name: string): Promise<string | null> {
     this.validateName(name)
+    return this.lookupByKey(name)
+  }
+
+  async getRawAccount(account: string): Promise<string | null> {
+    return this.lookupByKey(account)
+  }
+
+  private async lookupByKey(key: string): Promise<string | null> {
     try {
       const { stdout } = await execFileCommand('secret-tool', [
         'lookup',
         'service',
         SERVICE,
         'key',
-        name
+        key
       ])
       return stdout.trim() || null
     } catch {

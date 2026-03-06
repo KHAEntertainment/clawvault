@@ -42,6 +42,14 @@ export interface StorageProvider {
 }
 
 /**
+ * INTERNAL USE ONLY: Providers that can bypass env-var style validation for
+ * exec-provider protocol IDs while preserving normal StorageProvider behavior.
+ */
+export interface RawAccountLookupProvider {
+  getRawAccount(account: string): Promise<string | null>
+}
+
+/**
  * Platform detection result
  */
 export interface PlatformInfo {

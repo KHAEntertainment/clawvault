@@ -13,7 +13,7 @@
  * - Events include: timestamp, operation, secretName, success, errorMessage.
  */
 
-import { StorageProvider } from './interfaces.js'
+import { RawAccountLookupProvider, StorageProvider } from './interfaces.js'
 
 export interface AuditEvent {
   timestamp: string
@@ -100,6 +100,22 @@ export class AuditedStorageProvider implements StorageProvider {
       return result
     } catch (error: unknown) {
       this.emit({ timestamp: new Date().toISOString(), operation: 'has', secretName: name, success: false, errorMessage: error instanceof Error ? error.message : 'Unknown error' })
+      throw error
+    }
+  }
+
+  async getRawAccount?(account: string): Promise<string | null> {
+    const rawProvider = this.inner as StorageProvider & Partial<RawAccountLookupProvider>
+    try {
+      if (typeof rawProvider.getRawAccount !== 'function') {
+        throw new Error('Raw account lookup is not supported by this storage provider')
+      }
+
+      const result = await rawProvider.getRawAccount(account)
+      this.emit({ timestamp: new Date().toISOString(), operation: 'get', secretName: account, success: true })
+      return result
+    } catch (error: unknown) {
+      this.emit({ timestamp: new Date().toISOString(), operation: 'get', secretName: account, success: false, errorMessage: error instanceof Error ? error.message : 'Unknown error' })
       throw error
     }
   }

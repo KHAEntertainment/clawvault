@@ -48,6 +48,10 @@ export const openclawMigrateCommand = new Command('migrate')
   .option('--verbose', 'Print per-secret actions (metadata only)')
   .action(async (options: OpenClawMigrateOptions) => {
     try {
+      console.warn(
+        'DEPRECATED: clawvault openclaw migrate is deprecated and will be removed in a future version. The command still runs today, but we recommend using `openclaw secrets configure` instead.'
+      )
+
       const dryRun = !options.apply
       const includeOAuth = !options.apiKeysOnly
       const profileEnvVarMap = parseProfileMap(options.map)

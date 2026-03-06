@@ -64,7 +64,12 @@ describe('Security: Context Leak Prevention', () => {
 
       for (const file of commandFiles) {
         const source = readFileSync(join(commandDir, file), 'utf-8')
-        // CLI should rely on set/has/list/delete and never call storage.get()
+        if (file === 'resolve.ts') {
+          // resolve.ts is exempt: OpenClaw exec-provider protocol requires direct secret reads
+          continue
+        }
+
+        // All other CLI commands should rely on set/has/list/delete and never call storage.get()
         expect(source).not.toMatch(/\bstorage\.get\s*\(/)
       }
     })

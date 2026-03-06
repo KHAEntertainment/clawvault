@@ -15,6 +15,7 @@ import { serveCommand } from './commands/serve.js'
 import { requestCommand } from './commands/request.js'
 import { openclawCommand } from './commands/openclaw.js'
 import { doctorCommand } from './commands/doctor.js'
+import { resolveCommand } from './commands/resolve.js'
 
 const program = new Command()
 
@@ -32,6 +33,7 @@ program.addCommand(serveCommand)
 program.addCommand(requestCommand)
 program.addCommand(openclawCommand)
 program.addCommand(doctorCommand)
+program.addCommand(resolveCommand)
 
 // Parse and execute
 program.parse()

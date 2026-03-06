@@ -28,7 +28,7 @@
  */
 
 import { execFile } from 'child_process'
-import { StorageProvider } from '../interfaces.js'
+import { RawAccountLookupProvider, StorageProvider } from '../interfaces.js'
 
 const TARGET_PREFIX = 'clawvault:'
 const EXEC_TIMEOUT_MS = 10_000
@@ -104,7 +104,7 @@ $result = [CredManager]::GetPassword($target)
 [Console]::Out.Write($result)
 `
 
-export class WindowsCredentialManager implements StorageProvider {
+export class WindowsCredentialManager implements StorageProvider, RawAccountLookupProvider {
   private validateName(name: string): void {
     if (!SAFE_NAME_PATTERN.test(name)) {
       throw new Error(`Invalid secret name: ${name}`)
@@ -141,6 +141,14 @@ export class WindowsCredentialManager implements StorageProvider {
    */
   async get(name: string): Promise<string | null> {
     this.validateName(name)
+    return this.getByTarget(this.targetFor(name))
+  }
+
+  async getRawAccount(account: string): Promise<string | null> {
+    return this.getByTarget(this.targetFor(account))
+  }
+
+  private async getByTarget(target: string): Promise<string | null> {
     try {
       const { stdout } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
         execFile(
@@ -149,7 +157,7 @@ export class WindowsCredentialManager implements StorageProvider {
           {
             timeout: EXEC_TIMEOUT_MS,
             maxBuffer: EXEC_MAX_BUFFER_BYTES,
-            env: { ...process.env, CV_TARGET: this.targetFor(name) }
+            env: { ...process.env, CV_TARGET: target }
           },
           (error, stdout, stderr) => {
             if (error) { reject(error); return }
