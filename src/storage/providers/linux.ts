@@ -26,7 +26,7 @@ function execFileCommand(file: string, args: string[]): Promise<{ stdout: string
  * Uses execFile where possible to avoid shell parsing of untrusted input.
  */
 export class LinuxKeyringProvider implements StorageProvider, RawAccountLookupProvider {
-  private readonly safeNamePattern = /^[A-Z][A-Z0-9_]*$/
+  private readonly safeNamePattern = /^[a-z][a-zA-Z0-9_-]*(\/[a-zA-Z0-9_-]+)*$/
 
   private validateName(name: string): void {
     if (!this.safeNamePattern.test(name)) {

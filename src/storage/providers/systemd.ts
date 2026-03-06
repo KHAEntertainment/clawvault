@@ -31,7 +31,7 @@ export class SystemdCredsProvider implements StorageProvider {
   private withKey: NonNullable<SystemdCredsOptions['withKey']>
   private userScoped: boolean
   private setupComplete = false
-  private readonly safeNamePattern = /^[A-Z][A-Z0-9_]*$/
+  private readonly safeNamePattern = /^[a-z][a-zA-Z0-9_-]*(\/[a-zA-Z0-9_-]+)*$/
 
   constructor(options: SystemdCredsOptions = {}) {
     const dataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share')
