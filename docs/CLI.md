@@ -221,3 +221,117 @@ Checks:
 - [Secret Requests](SECRET-REQUESTS.md)
 - [Migration Guide](MIGRATION.md)
 - [Security Model](SECURITY.md)
+
+---
+
+## Agent/Chat Commands
+
+These commands are designed for chat contexts (Telegram, Discord, etc.) and never return secret values.
+
+### `cv add <name>`
+
+Generate a one-time secure link for secret entry.
+
+```bash
+# Basic usage
+clawvault cv add OPENAI_API_KEY
+
+# With notification disabled
+clawvault cv add OPENAI_API_KEY --no-notify
+
+# With custom duration
+clawvault cv add OPENAI_API_KEY --duration 30
+
+# Route webhook to specific agent session
+clawvault cv add OPENAI_API_KEY --session-key "agent:coder:telegram:..."
+```
+
+### `cv list`
+
+List stored secret names (no values).
+
+```bash
+clawvault cv list
+```
+
+Output:
+```
+Stored secrets:
+• OPENAI_API_KEY
+• GITHUB_TOKEN
+Total: 2
+```
+
+### `cv remove <name>`
+
+Delete a secret (requires -y flag for confirmation).
+
+```bash
+clawvault cv remove OPENAI_API_KEY -y
+```
+
+### `cv status`
+
+Check OpenClaw exec provider health and webhook configuration.
+
+```bash
+clawvault cv status
+```
+
+Output:
+```
+OpenClaw Status:
+• Gateway: ✓ Connected
+• Keyring: ✓ Accessible
+• Webhook token: ✓ Configured
+```
+
+### `cv get <name>`
+
+Check if a secret exists (generates a view link).
+
+```bash
+clawvault cv get OPENAI_API_KEY
+```
+
+### `cv reload`
+
+Trigger OpenClaw secrets reload via webhook.
+
+```bash
+clawvault cv reload
+```
+
+Requires `OPENCLAW_GATEWAY_TOKEN` to be configured.
+
+---
+
+## Secret Request Commands
+
+### `request <secretName>`
+
+Create a one-time secret request link.
+
+```bash
+# Basic usage
+clawvault request OPENAI_API_KEY
+
+# With custom timeout
+clawvault request OPENAI_API_KEY --timeout-min 30
+
+# With agent notification disabled
+clawvault request OPENAI_API_KEY --no-notify
+
+# Route webhook to specific session
+clawvault request OPENAI_API_KEY --session-key "agent:coder:telegram:..."
+
+# Custom link duration
+clawvault request OPENAI_API_KEY --duration 60
+```
+
+Options:
+- `--timeout-min <minutes>` — Request TTL (default: 15)
+- `--notify` / `--no-notify` — Notify agent on submission (default: true)
+- `--session-key <key>` — Route webhook to specific agent session
+- `--duration <minutes>` — Link lifetime in minutes (default: 15, max: 120)
+

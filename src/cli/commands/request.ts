@@ -19,6 +19,9 @@ interface RequestOptions {
   allowInsecureHttp?: boolean
   label?: string
   timeoutMin?: string
+  notify?: boolean
+  sessionKey?: string
+  duration?: string
 }
 
 export const requestCommand = new Command('request')
@@ -32,9 +35,13 @@ export const requestCommand = new Command('request')
   .option('--allow-insecure-http', 'Allow binding non-localhost over HTTP (strongly discouraged)', false)
   .option('--label <label>', 'Label shown on the request page')
   .option('--timeout-min <minutes>', 'Override request TTL in minutes (default 15)', '15')
+  .option('--notify', 'Notify agent when secret is submitted (default: true)', true)
+  .option('--no-notify', 'Disable agent notification')
+  .option('--session-key <key>', 'Route webhook to specific agent session')
+  .option('--duration <minutes>', 'Link lifetime in minutes (default 15, max 120)', '15')
   .action(async (secretName: string, options: RequestOptions) => {
     const port = parseInt(options.port, 10)
-    const ttlMin = parseInt(options.timeoutMin ?? '15', 10)
+    const ttlMin = parseInt(options.timeoutMin ?? options.duration ?? '15', 10)
 
     if (!Number.isFinite(port) || port < 1 || port > 65535) {
       console.log(chalk.red('Error: invalid port number'))
@@ -42,8 +49,8 @@ export const requestCommand = new Command('request')
       return
     }
 
-    if (!Number.isFinite(ttlMin) || ttlMin < 1) {
-      console.log(chalk.red('Error: invalid timeout-min value'))
+    if (!Number.isFinite(ttlMin) || ttlMin < 1 || ttlMin > 120) {
+      console.log(chalk.red('Error: timeout-min/duration must be between 1 and 120 minutes'))
       process.exitCode = 1
       return
     }
@@ -59,6 +66,8 @@ export const requestCommand = new Command('request')
       process.exitCode = 1
       return
     }
+
+    const notify = options.notify !== false // Default to true
 
     let storage
     let webModule
@@ -86,7 +95,11 @@ export const requestCommand = new Command('request')
         requestTtlMs: ttlMin * 60 * 1000,
       })
 
-      const r = result.requestStore.create(secretName, options.label)
+      // Create request with webhook options
+      const r = result.requestStore.create(secretName, options.label, {
+        notifyAgent: notify,
+        sessionKey: options.sessionKey,
+      })
       const url = `${result.origin}/requests/${r.id}`
 
       console.log(chalk.cyan('One-time secret request link:'))
@@ -94,11 +107,19 @@ export const requestCommand = new Command('request')
       console.log('')
       console.log(chalk.gray(`Secret name: ${secretName}`))
       console.log(chalk.gray(`Expires: ${new Date(r.expiresAt).toLocaleString()}`))
+      if (notify) {
+        console.log(chalk.gray(`Notification: ${options.sessionKey ? `enabled (session: ${options.sessionKey})` : 'enabled'}`))
+      } else {
+        console.log(chalk.gray('Notification: disabled'))
+      }
       console.log(chalk.gray('Waiting for submission... (Ctrl+C to cancel)'))
 
       try {
         await result.requestStore.waitForFulfilled(r.id)
         console.log(chalk.green('Secret received and stored.'))
+        if (notify) {
+          console.log(chalk.gray('Agent notification sent.'))
+        }
         await result.close()
         process.exitCode = 0
       } catch (err: any) {

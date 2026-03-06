@@ -7,6 +7,9 @@ export interface SecretRequest {
   createdAt: number
   expiresAt: number
   usedAt?: number
+  // Webhook metadata for agent callback
+  notifyAgent?: boolean
+  sessionKey?: string
 }
 
 export interface RequestStoreOptions {
@@ -54,7 +57,7 @@ export class SecretRequestStore {
     this.timer = undefined
   }
 
-  create(secretName: string, label?: string): SecretRequest {
+  create(secretName: string, label?: string, options?: { notifyAgent?: boolean; sessionKey?: string }): SecretRequest {
     const id = randomBytes(16).toString('hex')
     const now = Date.now()
     const req: SecretRequest = {
@@ -63,6 +66,8 @@ export class SecretRequestStore {
       secretName,
       createdAt: now,
       expiresAt: now + this.ttlMs,
+      notifyAgent: options?.notifyAgent,
+      sessionKey: options?.sessionKey,
     }
     this.requests.set(id, req)
     this.startCleanup()

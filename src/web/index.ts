@@ -50,6 +50,7 @@ import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.
 import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
+import { fireWebhookEvent } from './webhooks.js'
 
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */
@@ -255,6 +256,35 @@ export async function createServer(
 
   // Create one-time secret request link
   app.post('/api/requests', authMiddleware, (req: Request, res: Response) => apiCreateRequest(req, res, requestStore))
+
+  // --- Webhook endpoint for agent notifications ---
+  app.post('/webhooks/secret-submitted', async (req: Request, res: Response) => {
+    const { name, sessionKey, notifyAgent } = req.body as {
+      name?: string
+      sessionKey?: string
+      notifyAgent?: boolean
+    }
+
+    // Validate required fields
+    if (!name || typeof name !== 'string') {
+      res.status(400).json({ success: false, error: 'Missing or invalid name' })
+      return
+    }
+
+    // Validate name format
+    if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
+      res.status(400).json({ success: false, error: 'Invalid secret name format' })
+      return
+    }
+
+    // Only fire webhook if notifyAgent is true
+    if (notifyAgent) {
+      const result = await fireWebhookEvent(name, sessionKey)
+      res.json(result)
+    } else {
+      res.json({ success: true, error: 'Notification disabled' })
+    }
+  })
 
   // --- HTML forms ---
   app.get('/', (_req: Request, res: Response) => {
