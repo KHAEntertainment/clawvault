@@ -21,73 +21,130 @@ This allows OpenClaw to fetch secret values at runtime without keeping them in p
 
 **Secret values NEVER enter AI context.** All secret operations are handled directly through the keyring.
 
-## Migration & Integration Workflow
+---
 
-⚠️ **Do NOT use environment variables or wrapper scripts.** OpenClaw does not support expanding `${ENV_VAR}` placeholders in `auth-profiles.json`. Attempting automated migration that writes placeholders will break authentication.
+## Workflows
 
-Instead, use ClawVault as a native OpenClaw `exec` provider:
+### Agent Workflow (Non-Interactive)
 
-1. **Scan** existing plaintext secrets:
+Agents should **never** prompt the human for secrets. Use the CLI directly:
+
+```bash
+# Add a secret
+clawvault add <name> --value "secret-value"
+# or
+echo "secret-value" | clawvault add <name> --stdin
+
+# Rotate (update) a secret
+clawvault remove <name> -f && clawvault add <name> --value "new-secret"
+# or
+echo "new-secret" | clawvault add <name> --stdin
+
+# List stored secrets (names only)
+clawvault list
+
+# Check if a specific secret exists
+clawvault list | grep <name>
+```
+
+**Note:** `clawvault rotate` does not currently support `--value` or `--stdin`. The workaround is `remove` + `add`.
+
+---
+
+### Human Workflow (Interactive / Web UI)
+
+Humans can use the interactive CLI prompts or the web UI:
+
+**Option A — Interactive CLI (same machine):**
+```bash
+clawvault add <name>   # Prompts for value securely (hidden input)
+clawvault remove <name> -f && clawvault add <name>  # Update
+```
+
+**Option B — One-time web link (remote / shareable):**
+```bash
+# Generate a secure one-time link to add or update a secret
+clawvault request <name> --label "Add My API Key"
+
+# Output includes a URL like: http://localhost:3000/requests/<id>
+# For Tailscale access: use tailscale serve to proxy the port first
+tailscale serve --bg http://127.0.0.1:3000
+# Then access via https://<hostname>.tailnet.ts.net/requests/<id>
+```
+
+The link:
+- Is single-use and expires after 15 minutes (configurable via `--ttl`)
+- Automatically detects whether to **create** or **update** the secret
+- **Never** exposes the value in chat or logs
+
+---
+
+### Agent Discovering What Secrets Exist
+
+```bash
+# See all stored secret names
+clawvault list
+
+# The OpenClaw exec-provider protocol resolves by secret ID:
+clawvault resolve <name>   # Returns the secret value
+```
+
+---
+
+## OpenClaw Integration (exec provider)
+
+⚠️ **Do NOT use wrapper scripts or environment variable injection.** OpenClaw does not support `${ENV_VAR}` placeholders in `auth-profiles.json`.
+
+1. **Scan** existing plaintext secrets (dry-run only):
    ```bash
    clawvault openclaw migrate --verbose
    ```
-   *(Use this as a dry-run discovery tool only. Do NOT run with `--apply` unless you know what you are doing.)*
 
-2. **Add** secrets manually:
-   ```bash
-   clawvault add providers/openai/apiKey
-   # (Interactive prompt will ask for the secret)
-   ```
-   *For non-interactive mode (e.g., from an agent):*
+2. **Add** secrets to ClawVault:
    ```bash
    clawvault add providers/openai/apiKey --value "sk-..."
-   # Or via stdin: echo "sk-..." | clawvault add providers/openai/apiKey --stdin
    ```
 
-3. **Configure** OpenClaw to use ClawVault. Edit `openclaw.json`:
+3. **Configure** `openclaw.json` to use ClawVault as the secrets provider:
    ```json
    {
      "secrets": {
-       "provider": {
-         "type": "exec",
-         "command": [
-           "clawvault",
-           "resolve"
-         ]
+       "providers": {
+         "clawvault": {
+           "source": "exec",
+           "command": "/absolute/path/to/clawvault",
+           "args": ["resolve"],
+           "jsonOnly": true,
+           "passEnv": ["PATH"]
+         }
        }
      }
    }
    ```
+   **Important:** `command` must be an absolute path.
 
 4. **Reload** OpenClaw:
    ```bash
    openclaw gateway restart
    ```
 
-## CLI Commands
+---
 
-```bash
-# Add a new secret to the keyring
-clawvault add <name> [--value <val> | --stdin]
+## CLI Commands Reference
 
-# Resolve a secret (used by OpenClaw exec provider)
-clawvault resolve <name>
+| Command | Description |
+|---------|-------------|
+| `clawvault add <name> [--value <val> \| --stdin]` | Store a new secret |
+| `clawvault remove <name> [-f]` | Delete a secret |
+| `clawvault rotate <name>` | Alias for remove + add (interactive) |
+| `clawvault list` | List secret names (values never shown) |
+| `clawvault resolve <name>` | Resolve a secret value (OpenClaw exec protocol) |
+| `clawvault request <name> [--label text] [--ttl ms]` | Generate a one-time web link |
+| `clawvault openclaw migrate --verbose` | Scan auth-profiles.json (dry-run) |
+| `clawvault serve [-p port] [-H host] [--tls]` | Start web UI server |
+| `clawvault doctor` | Diagnose setup issues |
 
-# List all secrets (metadata only)
-clawvault list
-
-# Remove a secret
-clawvault remove <name> [-f]
-
-# Rotate a secret value
-clawvault rotate <name>
-
-# Start web UI server for Confidant-style one-time request links
-clawvault serve [-p <port>] [-H <host>] [--tls]
-
-# Dry-run migration scanner for old plaintext setups
-clawvault openclaw migrate --verbose
-```
+---
 
 ## Platform Support
 
@@ -96,7 +153,18 @@ clawvault openclaw migrate --verbose
 | Linux | GNOME Keyring / systemd-creds | `libsecret-tools` or `systemd` |
 | macOS | Keychain Services | Built-in |
 | Windows | Credential Manager | Built-in |
-| Any | Encrypted File (fallback) | None |
+| Any | Encrypted File (fallback) | `CLAWVAULT_ALLOW_FALLBACK=1` |
+
+---
+
+## Security Notes
+
+- Secret values are **never** returned by `list` — only names are shown
+- The web UI bearer token is printed to **stdout** at server startup
+- One-time links are rate-limited and expire automatically
+- A direct management dashboard (list + edit inline) is tracked in [GitHub Issue #31](https://github.com/KHAEntertainment/clawvault/issues/31)
+
+---
 
 ## Support
 
