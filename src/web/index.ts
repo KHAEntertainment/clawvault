@@ -222,7 +222,20 @@ export async function createServer(
         }
 
         // Keep user on the same page for simple validation failures.
-        if (msg) msg.textContent = 'Invalid submission. Please check the value and retry.';
+        if (msg) {
+          if (resp.status === 400) {
+            try { const j = await resp.json(); msg.textContent = j.error || 'Invalid submission. Please check the value and retry.'; }
+            catch { msg.textContent = 'Invalid submission. Please check the value and retry.'; }
+          } else if (resp.status === 410) {
+            msg.textContent = 'This link has expired or already been used.';
+          } else if (resp.status === 429) {
+            msg.textContent = 'Too many requests. Please wait a few minutes and try again.';
+          } else if (resp.status >= 500) {
+            msg.textContent = 'Server error. Please try again in a moment.';
+          } else {
+            msg.textContent = 'Submission failed. Please try again.';
+          }
+        }
         if (btn) {
           const def = (btn.dataset && btn.dataset.defaultText) ? btn.dataset.defaultText : 'Submit';
           btn.disabled = false;
@@ -291,6 +304,7 @@ export async function createServer(
   </div>
 
   <p class="muted" style="margin-top:16px;">Tip: For the best UX, use <code>clawvault request SECRET_NAME</code> and share the generated one-time link.</p>
+  <p style="color:#d4d4d8;font-size:11px;margin-top:24px;text-align:center;">ClawVault 0.2.0</p>
 </body>
 </html>`)
   })

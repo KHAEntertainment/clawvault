@@ -12,6 +12,8 @@ interface CreateRequestBody {
 
 const NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/
 
+const BUILD_VERSION = '0.2.0'
+
 function htmlPage(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(title)}</title>
@@ -29,6 +31,7 @@ function htmlPage(title: string, body: string): string {
 <meta http-equiv="Expires" content="0">
 </head><body>
 ${body}
+<p style="color:#d4d4d8;font-size:11px;margin-top:32px;text-align:center;">ClawVault ${BUILD_VERSION}</p>
 </body></html>`
 }
 
