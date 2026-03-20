@@ -71,8 +71,17 @@ export const serveCommand = new Command('serve')
       const policy = webModule.decideInsecureHttpPolicy(options.host, options.allowInsecureHttp ?? false)
       if (!policy.allow) {
         console.log(chalk.red('Refusing to start: binding a secret-submission server to a non-localhost address over HTTP is unsafe.'))
-        console.log(chalk.gray('Use Tailscale (recommended) or enable TLS via --tls --cert --key.'))
-        console.log(chalk.gray('To override (strongly discouraged), pass --allow-insecure-http.'))
+        console.log('')
+        console.log(chalk.bold('To serve over Tailscale, use this pattern:'))
+        console.log(chalk.cyan('  # 1. Start ClawVault on localhost only:'))
+        console.log(chalk.gray('     clawvault serve'))
+        console.log(chalk.cyan('  # 2. Proxy it through Tailscale:'))
+        console.log(chalk.gray('     tailscale serve --bg http://127.0.0.1:3000'))
+        console.log(chalk.cyan('  # 3. Access via your Tailscale HTTPS URL:'))
+        console.log(chalk.gray('     https://<your-machine>.tailnet.ts.net/'))
+        console.log('')
+        console.log(chalk.gray('Alternatively, enable TLS: clawvault serve --tls --cert <cert> --key <key>'))
+        console.log(chalk.gray('Or for local networks only, pass: --allow-insecure-http'))
         process.exit(1)
       }
 
@@ -126,9 +135,24 @@ export const serveCommand = new Command('serve')
       console.log(chalk.bold(result.token))
       console.log('')
       console.log(chalk.gray('Press Ctrl+C to stop'))
-    } catch (error) {
+    } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error'
-      console.log(chalk.red(`Failed to start server: ${message}`))
+      const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: string }).code) : ''
+      if (code === 'EADDRNOTAVAIL') {
+        console.log(chalk.red(`Cannot bind to ${options.host}:${port} — address not available.`))
+        console.log('')
+        console.log(chalk.bold('To serve over Tailscale, use this pattern instead:'))
+        console.log(chalk.cyan('  # 1. Start ClawVault on localhost:'))
+        console.log(chalk.gray('     clawvault serve'))
+        console.log(chalk.cyan('  # 2. Proxy through Tailscale:'))
+        console.log(chalk.gray('     tailscale serve --bg http://127.0.0.1:3000'))
+        console.log(chalk.cyan('  # 3. Access via your Tailscale HTTPS URL:'))
+        console.log(chalk.gray("     https://<your-machine>.tailnet.ts.net/"))
+        console.log('')
+        console.log(chalk.gray(`Check your Tailscale IP: tailscale ip -4`))
+      } else {
+        console.log(chalk.red(`Failed to start server: ${message}`))
+      }
       process.exit(1)
     }
   })

@@ -108,6 +108,22 @@ export const requestCommand = new Command('request')
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error'
+      const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: string }).code) : ''
+      if (code === 'EADDRNOTAVAIL') {
+        console.log(chalk.red(`Cannot bind to ${options.host}:${port} — address not available.`))
+        console.log('')
+        console.log(chalk.bold('To create a Tailscale-accessible request link, use this pattern:'))
+        console.log(chalk.cyan('  # 1. Start ClawVault on localhost:'))
+        console.log(chalk.gray('     clawvault serve'))
+        console.log(chalk.cyan('  # 2. Proxy through Tailscale:'))
+        console.log(chalk.gray('     tailscale serve --bg http://127.0.0.1:3000'))
+        console.log(chalk.cyan('  # 3. Then generate your request link:'))
+        console.log(chalk.gray(`     clawvault request ${secretName} --host localhost`))
+        console.log('')
+        console.log(chalk.gray(`Check your Tailscale IP: tailscale ip -4`))
+        process.exitCode = 1
+        return
+      }
       console.log(chalk.red(`Failed to start request server: ${message}`))
       process.exitCode = 1
     }
