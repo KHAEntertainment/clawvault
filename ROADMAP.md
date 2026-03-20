@@ -42,7 +42,7 @@ Plaintext credentials with filesystem permissions (0600) — acceptable for sing
 - [ ] Publish to ClawHub once NPM package is live
 
 ### 3. Monitor Upstream Issue
-- [ ] Create GitHub issue for ENV substitution in auth-profiles.json
+- [ ] Create/update GitHub issue for ENV substitution in **all credential-bearing config files**
 - [ ] Monitor for maintainer response
 - [ ] If no response in 2-3 weeks, proceed to encryption alternative
 
