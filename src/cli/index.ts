@@ -22,7 +22,7 @@ const program = new Command()
 program
   .name('clawvault')
   .description('Secure secret management for OpenClaw')
-  .version('0.1.0')
+  .version('0.2.0')
 
 // Register all subcommands
 program.addCommand(addCommand)
