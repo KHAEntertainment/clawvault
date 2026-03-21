@@ -5,15 +5,18 @@
 
 set -euo pipefail
 
-REPO="KHAEntertainment/clawvault"
+DEFAULT_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo 'KHAEntertainment/clawvault')"
+REPO="${REPO:-$DEFAULT_REPO}"
 TITLE="Enhancement: Cross-platform CLI tool compatibility (Claude Code, Aider, etc.)"
 LABEL="enhancement"
 
-# Strip the "GitHub Issue Draft" header line from the doc
-BODY=$(sed '1,3d' docs/planning/CROSS_PLATFORM_CLI_COMPATIBILITY.md)
+# Strip the "GitHub Issue Draft" header lines (first 3 lines) from the doc and write to a temp file
+BODY_FILE="$(mktemp)"
+trap 'rm -f "$BODY_FILE"' EXIT
+sed '1,3d' docs/planning/CROSS_PLATFORM_CLI_COMPATIBILITY.md > "$BODY_FILE"
 
 gh issue create \
   --repo "$REPO" \
   --title "$TITLE" \
   --label "$LABEL" \
-  --body "$BODY"
+  --body-file "$BODY_FILE"
