@@ -140,7 +140,7 @@ export async function createServer(
     max: 30,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { success: false, error: 'Rate limit exceeded. Please wait 15 minutes before trying again.' }
+    message: { success: false, message: 'Rate limit exceeded. Please wait 15 minutes before trying again.' }
   })
 
   // --- Body parsing ---

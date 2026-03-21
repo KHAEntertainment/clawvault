@@ -86,8 +86,8 @@ export async function submitSecret(
       }
     })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error(`Failed to store secret "${secretName}": ${message}`)
+    const errorName = error instanceof Error ? error.name : 'UnknownError'
+    console.error(`Failed to store secret "${secretName}"`, { error: errorName })
     
     // Never include provider/internal details in client-facing responses
     errorResponse(res, 500, 'Server error. Please try again later.')
