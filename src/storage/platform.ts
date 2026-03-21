@@ -74,19 +74,6 @@ export async function detectPlatform(): Promise<PlatformInfo> {
   }
 
   if (platform === 'linux') {
-    if (storageOverride) {
-      const providerMap: Record<string, 'linux' | 'systemd' | 'fallback'> = {
-        keyring: 'linux',
-        systemd: 'systemd',
-        fallback: 'fallback',
-      }
-      const provider = providerMap[storageOverride]
-      if (!provider) {
-        throw new Error(`Invalid CLAWVAULT_STORAGE value '${storageOverride}' for Linux platform. Allowed: keyring, systemd, fallback`)
-      }
-      return { platform, hasKeyring: true, provider }
-    }
-
     const hasSecretTool = await commandExists('secret-tool')
     if (hasSecretTool) {
       const usable = await linuxSecretToolUsable()
