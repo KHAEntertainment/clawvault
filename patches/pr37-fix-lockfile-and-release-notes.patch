@@ -1,0 +1,5 @@
+# Obsolete patch file
+#
+# This file previously contained a git patch for package-lock.json and docs/RELEASE.md,
+# but the patch no longer matches the current repository state and could be misleading
+# if applied. The contents have been intentionally cleared.
