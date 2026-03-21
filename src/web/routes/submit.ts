@@ -10,6 +10,14 @@
 import * as express from 'express'
 import { type StorageProvider } from '../../storage/index.js'
 
+/**
+ * Error response helper function for consistent error formatting.
+ * Must match the one in index.ts to ensure API consistency.
+ */
+function errorResponse(res: express.Response, status: number, message: string): void {
+  res.status(status).json({ success: false, message })
+}
+
 type Request = express.Request
 type Response = express.Response
 
@@ -41,18 +49,12 @@ export async function submitSecret(
 
   // Validate required fields
   if (!secretName || typeof secretName !== 'string') {
-    res.status(400).json({
-      success: false,
-      error: 'Missing or invalid secretName'
-    })
+    errorResponse(res, 400, 'Invalid request. Please check your input and try again.')
     return
   }
 
   if (typeof secretValue !== 'string') {
-    res.status(400).json({
-      success: false,
-      error: 'Missing or invalid secretValue'
-    })
+    errorResponse(res, 400, 'Invalid request. Please check your input and try again.')
     return
   }
 
@@ -68,10 +70,7 @@ export async function submitSecret(
 
   // Validate secret value is not empty
   if (secretValue.length === 0) {
-    res.status(400).json({
-      success: false,
-      error: 'Secret value cannot be empty'
-    })
+    errorResponse(res, 400, 'Invalid request. Please check your input and try again.')
     return
   }
 
@@ -92,12 +91,8 @@ export async function submitSecret(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     console.error(`Failed to store secret "${secretName}": ${message}`)
-
+    
     // Never include provider/internal details in client-facing responses
-    res.status(500).json({
-      success: false,
-      error: 'Failed to store secret',
-      message: 'Internal error while storing secret'
-    })
+    errorResponse(res, 500, 'Server error. Please try again later.')
   }
 }

@@ -1,109 +1,142 @@
-<coding_guidelines>
 # Agents Guide (ClawVault)
 
-This repo is a security-sensitive secret manager. The primary invariant is
-**secret values must never enter AI-visible context** (logs, errors, test
-output, HTTP responses, CLI output).
+ClawVault is a security-sensitive secret manager for OpenClaw. Secrets are stored in OS-native encrypted keyrings (GNOME Keyring, macOS Keychain, Windows Credential Manager).
 
-## Commands
+**PRIMARY INVARIANT:** Secret values must never enter AI-visible context (logs, errors, test output, HTTP responses, CLI output).
+
+## Build and Test Commands
 
 ```bash
-npm install           # Install dependencies
-npm run build         # TypeScript compilation
-npm test              # Run all test suites
-npm run lint          # ESLint checks
+npm install               # Install dependencies
+npm run build            # Build TypeScript (output to dist/)
+npm run dev              # Watch mode for development
+npm test                 # Run all tests (unit, integration, security)
+npx jest test/unit/      # Unit tests only
+npx jest test/integration/   # Integration tests only
+npx jest test/security/  # Security tests (CRITICAL - must pass)
+npx jest test/unit/storage/linux.test.ts  # Single test file
+npm test -- --coverage  # Run with coverage
+npm test -- --watch     # Watch mode for tests
+npm run lint            # Linting
 npm run audit:security  # npm audit at high severity
 ```
 
-## Repo layout
+### Pre-Commit Checklist
 
-- `src/` — implementation
-  - `src/storage/` platform keyring providers + audit wrapper
-  - `src/config/` config schemas + loader/saver (definitions only)
-  - `src/gateway/` environment injection + service integration
-  - `src/web/` Express UI for submission/status (metadata only, auth-gated)
-  - `src/cli/` Commander/Inquirer CLI
-- `test/` — `unit/`, `integration/`, `security/`
-- `docs/` — all non-README documentation
-  - `docs/agent/` agent notes/prompts
-  - `docs/planning/` design/brief/implementation plan
-  - `docs/reference/` upstream references and scripts
-  - `docs/SECURITY.md` — **full threat model, security controls, and
-    troubleshooting guide** (read this first when debugging security issues)
+```bash
+npm run build && npm test && npm run lint
+```
 
-Keep the repo root minimal (code/config + `README.md` + this file). Put new
-notes/specs under `docs/`.
+Pay special attention to `test/security/context-leak.test.ts` - it must always pass.
 
-## TypeScript / module conventions
+## Code Style Guidelines
 
-- This package is **ESM** (`"type": "module"`) with TS `NodeNext` resolution.
-- Follow the existing import style: internal relative imports include the
-  compiled extension (e.g. `./commands/add.js`).
-- Keep `strict` typing; avoid `any`.
+### TypeScript Conventions
 
-## Security rules (non-negotiable)
+- **Strict mode enabled** - No implicit any
+- **Module:** ESM with NodeNext resolution
+- **Target:** ES2022
+- **File extensions:** Imports must include `.js` extension (e.g., `./commands/add.js`)
+- **Use TSDoc** for function/class documentation with security notes
 
-1. **Never log secret values** (even in debug).
-2. **Never return secret values** from any API that can reach users/agents
-   (CLI output, HTTP responses, thrown errors).
-3. Validate and/or strictly allowlist identifiers used in shell/system
-   integration (secret names, env var names, service names).
-   Pattern: `^[A-Z][A-Z0-9_]*$`
-4. **Always use `execFile`/`spawn` with argument arrays** for any OS command
-   execution. Never use `exec()` or shell command strings. Never use `npx`.
-5. Update/add tests under `test/security/` when changing surfaces that could
-   leak.
-6. The web server requires a **bearer token** for all API routes. CORS is
-   locked to the server's own origin. Rate limiting applies to `/api/submit`.
+### Naming Conventions
 
-## Security architecture (embedded reference)
+| Type | Pattern | Example |
+|------|---------|---------|
+| Files | kebab-case | `linux-provider.ts` |
+| Classes | PascalCase | `LinuxKeyringProvider` |
+| Functions/Variables | camelCase | `createStorage` |
+| Constants | UPPER_SNAKE_CASE | `SECRET_NAME_PATTERN` |
+| Interfaces | PascalCase (no I prefix) | `StorageProvider` |
 
-ClawVault's full security model is documented in `docs/SECURITY.md`. Key
-points for agents:
+### Import Order
 
-### Command execution
-All OS commands (`secret-tool`, `security`, `cmdkey`, `powershell`) are called
-via `execFile()` with argument arrays. This prevents shell injection even if a
-secret value contains metacharacters like `$(...)`, backticks, or pipes.
+Node.js built-ins → External dependencies → Internal modules (with .js) → Relative imports (with .js)
 
-### Web server hardening
-- **Auth:** One-time bearer token generated at startup, printed to terminal.
-- **CORS:** Locked to own origin (prevents browser-based cross-origin attacks).
-- **Rate limit:** 30 req/15min on `/api/submit`.
-- **Helmet:** CSP, HSTS (TLS), X-Content-Type-Options, Referrer-Policy.
-- **Binding:** Localhost default. Non-localhost triggers a warning.
+### Error Handling
 
-### No secret retrieval endpoint
-There is intentionally no HTTP endpoint to retrieve secret values. The
-`/api/status` route returns names only. The `StorageProvider.get()` method is
-marked INTERNAL USE ONLY and must never be exposed in any public surface.
+Use typed errors with proper inheritance. Example: `class StorageError extends Error { constructor(message: string, public readonly cause?: unknown) { super(message); this.name = 'StorageError' } }`
 
-### Audit logging
-`AuditedStorageProvider` wraps any provider with structured JSON event logging.
-Events contain operation name, secret name, success flag, and error message.
-Never secret values.
+**CRITICAL:** Never include secret values in error messages, stack traces, or logs.
 
-### Fallback encryption
-When no native keyring is available, AES-256-GCM encryption with
-machine-id-based key derivation is used. This is weaker than a real keyring —
-users see a warning.
+## Security Rules (NON-NEGOTIABLE)
 
-## Troubleshooting (quick reference)
+### Command Injection Prevention
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| 401 Unauthorized | Missing/wrong bearer token | Use the token printed at server startup |
-| CORS error | Wrong origin | Access via the exact URL printed at startup |
-| 429 Too Many Requests | Rate limit hit | Wait 15min or restart server |
-| Invalid secret name | Name doesn't match pattern | Use `^[A-Z][A-Z0-9_]*$` |
-| Fallback storage warning | No keyring tools | Install platform tools (see docs/SECURITY.md) |
-| Non-localhost warning | `--host` set to non-localhost | Only on trusted networks; use TLS |
+- **Always use `execFile()` with argument arrays** - Never use `exec()` or shell strings
+- Secret names validated against: `/^[A-Z][A-Z0-9_]*$/`
+- Arguments passed as C-level argv, bypassing shell interpolation
 
-For the full troubleshooting guide, see `docs/SECURITY.md`.
+### Context Leak Prevention
 
-## When changing storage/gateway/web
+**Secret values must never appear in:**
+- Error messages or thrown exceptions
+- CLI stdout/stderr output
+- HTTP response bodies
+- Log output (console.log, console.error)
+- Test output or assertion messages
+- Source code patterns (e.g., `console.log(secret)`)
 
-- Re-run: `npm run build && npm test && npm run lint`.
-- Pay attention to `test/security/context-leak.test.ts` and keep it passing.
-- If adding a new command or endpoint, add a context-leak test for it.
-</coding_guidelines>
+### Web Server Security
+
+- Binding: Localhost (127.0.0.1) by default
+- Auth: Cryptographically random 64-char bearer token
+- Rate Limit: 30 requests per 15-min window on `/api/submit`
+- No retrieval endpoint: Intentionally no API to read secret values
+- Helmet: CSP, HSTS, X-Content-Type-Options, Referrer-Policy
+
+### Storage Provider Security
+
+All providers MUST use `execFile()` with argument arrays only:
+- LinuxKeyringProvider: `secret-tool`, `gdbus`
+- MacOSKeychainProvider: `security`
+- WindowsCredentialManager: `cmdkey`, `powershell`
+- FallbackProvider: Node.js crypto (N/A)
+
+### Supply Chain Security
+
+- **Never use `npx`, `npm exec`, or runtime code download**
+- All external commands are OS-provided binaries with known paths
+- Dependencies locked in `package-lock.json`
+
+## Testing Strategy
+
+| Directory | Purpose |
+|-----------|---------|
+| `test/unit/` | Isolated unit tests for each module |
+| `test/integration/` | End-to-end flows and integration |
+| `test/security/` | **CRITICAL:** Context leak prevention |
+
+### Security Test Requirements
+
+When modifying storage, gateway, or CLI code: Verify `test/security/context-leak.test.ts` passes, add tests for new commands/endpoints, ensure no `storage.get()` calls in CLI (except `resolve.ts`), verify no `exec()` usage (only `execFile` with argument arrays).
+
+## Technology Stack
+
+### Runtime Dependencies
+express (4.x), commander (11.x), inquirer (9.x), chalk (5.x), helmet (8.x), cors (2.x), express-rate-limit (8.x)
+
+### Dev Dependencies
+typescript (5.2+), jest (29.x) + ts-jest, eslint (8.x) + @typescript-eslint
+
+## Repository Layout
+
+src/cli - Commander/Inquirer CLI
+src/config - Configuration schemas and loader
+src/gateway - Environment injection + service management
+src/openclaw - OpenClaw migration utilities
+src/storage - Platform keyring providers + implementations
+src/types - Shared TypeScript types
+src/web - Express Web UI
+test/unit - Unit tests (mirror src structure)
+test/integration - Integration tests
+test/security - CRITICAL: Context leak prevention tests
+docs - Documentation
+
+## Additional Documentation
+
+- `docs/SECURITY.md` - Full threat model and security controls
+- `docs/ARCHITECTURE.md` - System design and data flow
+- `docs/CLI.md` - Complete CLI reference
+
+**Remember:** When in doubt, prioritize security over convenience. Secret values must never be exposed to AI context.
