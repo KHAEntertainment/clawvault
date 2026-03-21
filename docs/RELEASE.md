@@ -56,7 +56,7 @@ ClawVault 1.0.0 is the initial stable release of the secure secret management sy
 ### Installation
 
 ```bash
-npm install -g clawvault
+npm install -g @khaentertainment/clawvault
 ```
 
 ### Quick Start
@@ -131,6 +131,45 @@ MIT License - see LICENSE file for details
 ---
 
 ## Version History
+
+### 0.2.0 (2026-03-21)
+
+**BREAKING CHANGE: Package Rename**
+
+The package has been renamed from `clawvault` to `@khaentertainment/clawvault`.
+
+**Migration Steps:**
+
+1. Update your `package.json` dependency:
+   ```json
+   {
+     "dependencies": {
+       "@khaentertainment/clawvault": "^0.2.0"
+     }
+   }
+   ```
+
+2. Update all import/require statements:
+   ```javascript
+   // Old
+   import { createStorage } from 'clawvault'
+   const clawvault = require('clawvault')
+
+   // New
+   import { createStorage } from '@khaentertainment/clawvault'
+   const clawvault = require('@khaentertainment/clawvault')
+   ```
+
+3. Update keyring account identifiers if you're using custom service identifiers:
+   ```bash
+   # Examples in documentation now reference @khaentertainment/clawvault
+   # e.g., acct="@khaentertainment/clawvault" instead of acct="clawvault"
+   ```
+
+**Other Changes:**
+- Web UI: Friendly inline messaging for rate limit (429) responses
+- Documentation updates and examples consistency improvements
+- Environment variable `CLAWVAULT_STORAGE` now supports overriding the storage backend (supported values: `deterministic`, `keyring`, or `fallback`)
 
 ### 1.0.0 (2024-01-15)
 

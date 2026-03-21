@@ -6,37 +6,53 @@ const execFileAsync = promisify(execFile)
 
 /**
  * Get storage provider override from environment variable.
+ *
  * Priority: CLAWVAULT_STORAGE environment variable > auto-detection.
  *
  * @returns Provider type string or null
  */
 function getStorageOverride(): string | null {
   const envOverride = process.env.CLAWVAULT_STORAGE
-  if (!envOverride) {
-    return null
-  }
 
-  const platform = process.platform
-
-  // Define platform-specific allowed providers
-  const platformAllowedProviders: Record<string, string[]> = {
-    linux: ['keyring', 'systemd', 'fallback'],
-    darwin: ['keyring', 'keychain', 'credential', 'fallback'],
-    win32: ['keyring', 'keychain', 'credential', 'fallback'],
-  }
-
-  const allowedProviders = platformAllowedProviders[platform]
-  if (!allowedProviders) {
-    // Unknown platform
-    return null
-  }
-
-  // Only accept providers valid for the current platform
-  if (allowedProviders.includes(envOverride)) {
+  const validProviders = ['keyring', 'keychain', 'credential', 'systemd', 'fallback']
+  if (envOverride && validProviders.includes(envOverride)) {
     return envOverride
   }
 
-  // Reject (return null) for any value not explicitly supported on current OS
+  return null
+}
+
+/**
+ * Map storage type string to provider info.
+ * Returns null for auto-detection (no override).
+ *
+ * IMPORTANT: Only returns provider info if:
+ * - The override is 'fallback' (allowed on any OS), OR
+ * - The provider's platform matches the runtime platform
+ */
+function getProviderInfo(
+  override: string | null,
+  platform: NodeJS.Platform
+): PlatformInfo | null {
+  // If override is specified, validate it matches the current platform
+  if (override) {
+    const providerMap: Record<string, { platform: NodeJS.Platform; hasKeyring: boolean; provider: 'linux' | 'systemd' | 'macos' | 'windows' | 'fallback' }> = {
+      keyring: { platform: 'linux', hasKeyring: true, provider: 'linux' },
+      keychain: { platform: 'darwin', hasKeyring: true, provider: 'macos' },
+      credential: { platform: 'win32', hasKeyring: true, provider: 'windows' },
+      systemd: { platform: 'linux', hasKeyring: true, provider: 'systemd' },
+      fallback: { platform: platform, hasKeyring: false, provider: 'fallback' },
+    }
+    
+    const info = providerMap[override]
+    // Only return the provider info if it matches the current platform
+    if (info && info.platform === platform) {
+      return info
+    }
+    
+    return null
+  }
+
   return null
 }
 
@@ -48,8 +64,14 @@ function getStorageOverride(): string | null {
  * encrypted-file provider rather than hard-fail at runtime.
  */
 export async function detectPlatform(): Promise<PlatformInfo> {
-  const storageOverride = getStorageOverride()
   const platform = process.platform
+  const storageOverride = getStorageOverride()
+
+  // Check for platform-specific override first
+  const providerInfo = getProviderInfo(storageOverride, platform)
+  if (providerInfo) {
+    return providerInfo
+  }
 
   if (platform === 'linux') {
     if (storageOverride) {
@@ -71,7 +93,6 @@ export async function detectPlatform(): Promise<PlatformInfo> {
       if (usable) return { platform, hasKeyring: true, provider: 'linux' }
     }
 
-    // Headless/system-service Linux: prefer systemd credentials if available.
     const hasSystemdCreds = await commandExists('systemd-creds')
     if (hasSystemdCreds) return { platform, hasKeyring: true, provider: 'systemd' }
 
@@ -80,21 +101,7 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 
   if (platform === 'darwin') {
     const hasSecurity = await commandExists('security')
-
-    if (storageOverride) {
-      const providerMap: Record<string, 'macos' | 'fallback'> = {
-        keyring: 'macos',
-        keychain: 'macos',
-        credential: 'macos',
-        fallback: 'fallback',
-      }
-      const provider = providerMap[storageOverride]
-      if (!provider) {
-        throw new Error(`Invalid CLAWVAULT_STORAGE value '${storageOverride}' for macOS platform. Allowed: keyring, keychain, credential, fallback`)
-      }
-      return { platform, hasKeyring: hasSecurity, provider }
-    }
-
+    
     return {
       platform,
       hasKeyring: hasSecurity,
@@ -103,23 +110,8 @@ export async function detectPlatform(): Promise<PlatformInfo> {
   }
 
   if (platform === 'win32') {
-    // "where" is a built-in on Windows; execute via cmd.exe.
     const hasCmdKey = await commandExistsWindows('cmdkey')
-
-    if (storageOverride) {
-      const providerMap: Record<string, 'windows' | 'fallback'> = {
-        keyring: 'windows',
-        keychain: 'windows',
-        credential: 'windows',
-        fallback: 'fallback',
-      }
-      const provider = providerMap[storageOverride]
-      if (!provider) {
-        throw new Error(`Invalid CLAWVAULT_STORAGE value '${storageOverride}' for Windows platform. Allowed: keyring, keychain, credential, fallback`)
-      }
-      return { platform, hasKeyring: hasCmdKey, provider }
-    }
-
+    
     return {
       platform,
       hasKeyring: hasCmdKey,
