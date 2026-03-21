@@ -51,6 +51,14 @@ import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
 
+/**
+ * Centralized error response helper for consistent API error formatting.
+ * Ensures all error responses follow the same structure and never leak sensitive information.
+ */
+function errorResponse(res: Response, status: number, message: string): void {
+  res.status(status).json({ success: false, message })
+}
+
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */
   port: number
@@ -132,7 +140,7 @@ export async function createServer(
     max: 30,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { success: false, error: 'Too many requests. Try again later.' }
+    message: { success: false, error: 'Rate limit exceeded. Please wait 15 minutes before trying again.' }
   })
 
   // --- Body parsing ---
@@ -143,7 +151,7 @@ export async function createServer(
   const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
     const authHeader = req.headers.authorization
     if (!authHeader || authHeader !== `Bearer ${token}`) {
-      res.status(401).json({ success: false, error: 'Unauthorized: invalid or missing bearer token' })
+      errorResponse(res, 401, 'Unauthorized. Please check your bearer token.')
       return
     }
     next()
