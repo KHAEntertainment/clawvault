@@ -1,5 +1,5 @@
 {
-  "name": "clawvault",
+  "name": "@khaentertainment/clawvault",
   "version": "0.2.0",
   "type": "module",
   "description": "Secure secret management for OpenClaw - combines Confidant UX with Secret Manager security",
@@ -24,6 +24,14 @@
   ],
   "author": "Billy <billy@openclaw.dev>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KHAEntertainment/clawvault.git"
+  },
+  "bugs": {
+    "url": "https://github.com/KHAEntertainment/clawvault/issues"
+  },
+  "homepage": "https://github.com/KHAEntertainment/clawvault#readme",
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^11.0.0",

@@ -34,7 +34,7 @@ function getProviderInfo(
   override: string | null,
   platform: NodeJS.Platform
 ): PlatformInfo | null {
-  // If override is specified, return matching platform info
+  // If override is specified, validate it matches the current platform
   if (override) {
     const providerMap: Record<string, { platform: NodeJS.Platform; hasKeyring: boolean; provider: 'linux' | 'systemd' | 'macos' | 'windows' | 'fallback' }> = {
       keyring: { platform: 'linux', hasKeyring: true, provider: 'linux' },
@@ -43,25 +43,13 @@ function getProviderInfo(
       systemd: { platform: 'linux', hasKeyring: true, provider: 'systemd' },
       fallback: { platform: platform, hasKeyring: false, provider: 'fallback' },
     }
-
-    const mapped = providerMap[override]
-    if (!mapped) {
-      return null
+    
+    const info = providerMap[override]
+    // Only return the provider info if it matches the current platform
+    if (info && info.platform === platform) {
+      return info
     }
-
-    // Only allow the override if:
-    // 1. It's 'fallback' (allowed on any OS), OR
-    // 2. The mapped provider's platform matches the runtime platform
-    if (override === 'fallback' || mapped.platform === platform) {
-      // Return with the RUNTIME platform, not the mapped one
-      return {
-        platform: platform,
-        hasKeyring: mapped.hasKeyring,
-        provider: mapped.provider
-      }
-    }
-
-    // Override doesn't match runtime platform - return null
+    
     return null
   }
 
@@ -79,10 +67,10 @@ export async function detectPlatform(): Promise<PlatformInfo> {
   const platform = process.platform
   const storageOverride = getStorageOverride()
 
-  // Check for override first
-  const overrideInfo = getProviderInfo(storageOverride, platform)
-  if (overrideInfo) {
-    return overrideInfo
+  // Check for platform-specific override first
+  const providerInfo = getProviderInfo(storageOverride, platform)
+  if (providerInfo) {
+    return providerInfo
   }
 
   if (platform === 'linux') {
@@ -100,7 +88,7 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 
   if (platform === 'darwin') {
     const hasSecurity = await commandExists('security')
-
+    
     return {
       platform,
       hasKeyring: hasSecurity,
@@ -110,7 +98,7 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 
   if (platform === 'win32') {
     const hasCmdKey = await commandExistsWindows('cmdkey')
-
+    
     return {
       platform,
       hasKeyring: hasCmdKey,
