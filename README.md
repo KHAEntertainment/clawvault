@@ -58,7 +58,7 @@ npm install
 npm run build
 
 # Run from local build
-node dist/cli.js
+node dist/cli/index.js
 
 # Or symlink for development
 npm link
@@ -88,7 +88,7 @@ See full details: [docs/SECRET-REQUESTS.md](docs/SECRET-REQUESTS.md)
 
 ## OpenClaw Migrate
 
-Deprecated: `clawvault openclaw migrate` remains available as a scanner and migration helper for older plaintext OpenClaw setups, but ClawVault's primary role is now as an exec-provider backend.
+Deprecated: `clawvault openclaw migrate` remains available as a scanner and migration helper for older plaintext OpenClaw setups, but ClawVault's primary role is now an exec-provider backend.
 
 Scan OpenClaw's `auth-profiles.json` and `openclaw.json` and migrate plaintext credentials to encrypted storage. OAuth credential migration remains incomplete.
 
@@ -117,9 +117,9 @@ See full details: [docs/MIGRATION.md](docs/MIGRATION.md)
 ## Installation
 
 ```bash
-npm install -g clawvault
+npm install -g @khaentertainment/clawvault
 # or
-npx clawvault <command>
+npx @khaentertainment/clawvault <command>
 ```
 
 ## Requirements
