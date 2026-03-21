@@ -213,7 +213,7 @@ function htmlManagePage(
     ${secrets.map(secret => `
       <div id="update-form-${escapeHtml(secret.name)}" class="expand-form">
         <h2>Update Secret: <code>${escapeHtml(secret.name)}</code></h2>
-        <form method="POST" action="/manage/${encodeURIComponent(secret.name)}/update">
+        <form method="POST" action="/manage/${encodeURIComponent(secret.name)}/update" class="update-secret-form" data-secret-name="${escapeHtml(secret.name)}">
           <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
           <label>
             New Secret Value
@@ -358,7 +358,41 @@ export async function manageUpdate(
       ))
       return
     }
-    
+
+    // Verify the secret is allowed/exists before upserting
+    // Check if secret exists in storage or is defined in config (allowed)
+    let secretExists = false
+    try {
+      const existingValue = await context.storage.get(name)
+      secretExists = existingValue !== null && existingValue !== undefined
+    } catch {
+      // If get() throws, the secret doesn't exist
+      secretExists = false
+    }
+
+    const secretInConfig = context.config.secrets && context.config.secrets[name]
+    const isAllowed = secretExists || secretInConfig
+
+    if (!isAllowed) {
+      context.emit({
+        timestamp: new Date().toISOString(),
+        operation: 'set',
+        secretName: name,
+        source: 'manage-dashboard',
+        success: false,
+        errorMessage: 'Secret not allowed: not defined in config and does not exist in storage'
+      })
+      const secrets = await secretsForErrorPage()
+      res.status(403).type('html').send(htmlManagePage(
+        'Secret Management Dashboard',
+        secrets,
+        context.csrfToken,
+        undefined,
+        `Secret '${name}' is not allowed. Secrets must be defined in config or already exist in storage.`
+      ))
+      return
+    }
+
     // Store the secret
     await context.storage.set(name, req.body.secretValue)
     
@@ -367,16 +401,27 @@ export async function manageUpdate(
     // Redirect to /manage with success banner
     res.redirect(303, `/manage?updated=${encodeURIComponent(name)}`)
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    context.emit({ timestamp: new Date().toISOString(), operation: 'set', secretName: name, source: 'manage-dashboard', success: false, errorMessage: message })
-    
+    // Keep detailed error for internal logs/audit events only
+    const detailedMessage = error instanceof Error ? error.message : 'Unknown error'
+    context.emit({
+      timestamp: new Date().toISOString(),
+      operation: 'set',
+      secretName: name,
+      source: 'manage-dashboard',
+      success: false,
+      errorMessage: detailedMessage
+    })
+
+    // Use a fixed, user-safe message to avoid leaking secret contents
+    const userSafeMessage = 'An error occurred while saving the secret'
+
     const secrets = await secretsForErrorPage()
     res.status(500).type('html').send(htmlManagePage(
       'Secret Management Dashboard',
       secrets,
       context.csrfToken,
       undefined,
-      message
+      userSafeMessage
     ))
   }
 }

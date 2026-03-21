@@ -48,10 +48,6 @@ export async function createServer(
   const requestStore = options.requestStore
   const app = express()
 
-  // Generate CSRF token for manage dashboard (server-side token stored in memory,
-  // validated against hidden form field on POST)
-  const csrfToken = randomBytes(16).toString('hex')
-
   // --- Helmet: comprehensive security headers ---
   app.use(helmet({
     contentSecurityPolicy: {
@@ -95,6 +91,21 @@ export async function createServer(
   app.use(express.urlencoded({ extended: true }))
   app.use(express.json({ limit: '64kb' }))
 
+  // --- Cookie parsing (manual implementation for CSRF) ---
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    req.cookies = {}
+    const cookieHeader = req.headers.cookie
+    if (cookieHeader) {
+      cookieHeader.split(';').forEach(cookie => {
+        const [name, ...rest] = cookie.split('=')
+        if (name && rest.length > 0) {
+          req.cookies[name.trim()] = rest.join('=').trim()
+        }
+      })
+    }
+    next()
+  })
+
   // --- Bearer token auth for API routes ---
   const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
     const authHeader = req.headers.authorization
@@ -114,9 +125,25 @@ export async function createServer(
     // If config loading fails, fall back to empty config so the server still starts.
   }
 
-  // Audit is handled by AuditedStorageProvider wrapping storage in serve.ts;
-  // using a noop here avoids double-logging for manage dashboard operations.
-  const noopAuditEmit = (_event: AuditEvent): void => {}
+  // Create an audit emitter that forwards events to the storage provider's audit handler
+  // while redacting secret values (only include metadata: secret id/name, actor, action, timestamp, source)
+  const forwardingAuditEmit = (event: AuditEvent): void => {
+    // Redact any secret values from the event before forwarding
+    const redactedEvent: AuditEvent = {
+      timestamp: event.timestamp,
+      operation: event.operation,
+      source: event.source || 'manage-dashboard',
+      success: event.success,
+      ...(event.secretName && { secretName: event.secretName }),
+      ...(event.errorMessage && { errorMessage: event.errorMessage }),
+      // Explicitly exclude secretValue and other sensitive fields
+    }
+
+    // Forward to the storage provider's audit handler if it's an AuditedStorageProvider
+    if ('emit' in storage && typeof storage.emit === 'function') {
+      (storage as any).emit(redactedEvent)
+    }
+  }
 
   // --- Health check (no auth required) ---
   app.get('/health', (_req: Request, res: Response) => {
@@ -221,6 +248,24 @@ export async function createServer(
     });
   }
 
+  // Get CSRF token from cookie
+  function getCsrfToken() {
+    const match = document.cookie.match(/csrf_token=([^;]+)/);
+    return match ? match[1] : '';
+  }
+
+  // Get bearer token from sessionStorage or prompt user
+  function getBearerToken() {
+    let token = sessionStorage.getItem('clawvault_bearer_token');
+    if (!token) {
+      token = prompt('Enter your ClawVault bearer token (from terminal):');
+      if (token) {
+        sessionStorage.setItem('clawvault_bearer_token', token);
+      }
+    }
+    return token;
+  }
+
   window.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.toggle-expand-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -237,6 +282,70 @@ export async function createServer(
     document.querySelectorAll('.cancel-expand-btn').forEach(function(btn) {
       btn.addEventListener('click', hideAllExpandForms);
     });
+
+    // Intercept form submissions to add Bearer token header
+    document.querySelectorAll('.update-secret-form').forEach(function(form) {
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+        const secretName = form.getAttribute('data-secret-name');
+        const secretValue = formData.get('secretValue');
+        const csrfToken = getCsrfToken();
+        const bearerToken = getBearerToken();
+
+        if (!bearerToken) {
+          alert('Bearer token is required. Please refresh and try again.');
+          return;
+        }
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Saving...';
+        }
+
+        try {
+          const response = await fetch('/manage/' + encodeURIComponent(secretName) + '/update', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + bearerToken,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              secretValue: secretValue,
+              _csrf: csrfToken
+            })
+          });
+
+          if (response.redirected || response.status === 303) {
+            window.location.href = response.url || '/manage?updated=' + encodeURIComponent(secretName);
+          } else if (response.ok) {
+            const html = await response.text();
+            document.open();
+            document.write(html);
+            document.close();
+          } else if (response.status === 401) {
+            sessionStorage.removeItem('clawvault_bearer_token');
+            alert('Authentication failed. Please refresh and try again.');
+            window.location.reload();
+          } else {
+            const text = await response.text();
+            alert('Error: ' + (text || 'Failed to update secret'));
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Save';
+            }
+          }
+        } catch (err) {
+          alert('Network error: ' + err.message);
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save';
+          }
+        }
+      });
+    });
   });
 })();
 `)
@@ -248,10 +357,35 @@ export async function createServer(
   app.post('/api/requests', authMiddleware, (req: Request, res: Response) => apiCreateRequest(req, res, requestStore))
 
   // --- Manage dashboard routes (auth required) ---
-  app.get('/manage', authMiddleware, manageLimiter, (req: Request, res: Response) => 
-    manageList(req, res, { storage, config: manageConfig, csrfToken, emit: noopAuditEmit }))
-  app.post('/manage/:name/update', authMiddleware, manageLimiter, express.urlencoded({ extended: true }), (req: Request, res: Response) => 
-    manageUpdate(req, res, { storage, config: manageConfig, csrfToken, emit: noopAuditEmit }))
+  app.get('/manage', authMiddleware, manageLimiter, (req: Request, res: Response) => {
+    // Generate fresh CSRF token for this request
+    const csrfToken = randomBytes(16).toString('hex')
+
+    // Set CSRF token as a non-HttpOnly cookie scoped to /manage with SameSite and secure flags
+    const cookieOptions = [
+      `csrf_token=${csrfToken}`,
+      'Path=/manage',
+      'SameSite=Strict',
+      'Max-Age=3600', // 1 hour TTL
+      options.tls ? 'Secure' : '', // Secure flag only if using TLS
+    ].filter(Boolean).join('; ')
+
+    res.setHeader('Set-Cookie', cookieOptions)
+    manageList(req, res, { storage, config: manageConfig, csrfToken, emit: forwardingAuditEmit })
+  })
+
+  app.post('/manage/:name/update', authMiddleware, manageLimiter, express.urlencoded({ extended: true }), (req: Request, res: Response) => {
+    // Validate double-submit CSRF token
+    const cookieToken = req.cookies?.csrf_token
+    const bodyToken = req.body._csrf
+
+    if (!cookieToken || !bodyToken || cookieToken !== bodyToken) {
+      res.status(403).json({ success: false, error: 'Invalid CSRF token. Please refresh the page.' })
+      return
+    }
+
+    manageUpdate(req, res, { storage, config: manageConfig, csrfToken: bodyToken, emit: forwardingAuditEmit })
+  })
 
   // --- HTML forms ---
   app.get('/', (_req: Request, res: Response) => {
