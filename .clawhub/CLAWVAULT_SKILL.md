@@ -1,410 +1,182 @@
----
+# ClawVault Skill
+
+## Metadata
+
+```yaml
 name: clawvault
-description: Secure secret management for OpenClaw - install, configure, and use ClawVault CLI to manage encrypted API keys
-homepage: https://github.com/openclaw/clawvault
+version: 0.2.0
+description: Secure OS-keychain secrets backend for OpenClaw's native secrets management.
+author: Billy <billy@openclaw.dev>
+license: MIT
+homepage: https://github.com/KHAEntertainment/clawvault
+```
+
+## Description
+
+ClawVault is an OS-keychain secrets backend for OpenClaw's native secrets management. It stores secrets in the platform credential store (GNOME Keyring, macOS Keychain, Windows Credential Manager) and implements the OpenClaw `exec`-provider resolve protocol.
+
+This allows OpenClaw to fetch secret values at runtime without keeping them in plaintext config files (like `auth-profiles.json`) or chat history.
+
+### Key Security Guarantee
+
+**Secret values NEVER enter AI context.** All secret operations are handled directly through the keyring.
+
 ---
 
-# ClawVault Agent Skill
+## Workflows
 
-## Overview
+### Agent Workflow (Non-Interactive)
 
-ClawVault is a secure secret management system for OpenClaw that stores API keys and sensitive credentials in OS-native encrypted keyrings. **Secret values NEVER enter AI context**, making it safe for use with language models.
-
-### Security Guarantee
-
-- ✅ Secrets encrypted at rest (GNOME Keyring, macOS Keychain, Windows Credential Manager)
-- ✅ AI context isolation (secrets never in logs, errors, or model input)
-- ✅ Shell injection protection (all commands use `execFile()`)
-- ✅ Audit logging (metadata only, never secret values)
-
-## Installation
-
-### Step 1: Install ClawVault CLI
-
-ClawVault is distributed as an npm package:
+Agents should **never** prompt the human for secrets. Use `clawvault request` to generate a secure one-time link:
 
 ```bash
-npm install -g clawvault
-```
+# Request a secret from the human via one-time web link
+clawvault request <name> --label "Describe what this secret is for"
 
-Verify installation:
-```bash
-clawvault --version
-# Should output: 0.1.0
-```
+# The human will receive a URL to securely provide the secret
+# The value NEVER enters shell history or AI context
 
-### Step 2: Check Dependencies
-
-Run the doctor command to verify system dependencies:
-
-```bash
-clawvault doctor
-```
-
-**Expected output on Linux:**
-```
-  ✓ GNOME Keyring storage
-  ✓ Secret service query
-  ✓ Systemd integration (optional)
-```
-
-**If missing dependencies:**
-```
-  ✗ GNOME Keyring storage
-    Installation: Debian/Ubuntu: sudo apt install libsecret-tools
-```
-
-### Important: Why Sudo Installation is Manual
-
-⚠️ **You will see installation instructions with `sudo` commands.**
-
-**Why we don't automate this:**
-- OpenClaw typically runs as a non-privileged user account
-- Running `sudo` commands from AI agents is a security risk
-- Users should manually install system packages using their admin account
-- This prevents accidental privilege escalation attacks
-
-**To install missing dependencies:**
-1. Copy the installation command shown by `clawvault doctor`
-2. Run it in a terminal with your admin account
-3. Re-run `clawvault doctor` to verify
-
-## Usage
-
-### Basic Commands
-
-```bash
-# List all secrets (metadata only, never values)
+# List stored secrets (names only)
 clawvault list
 
-# Add a new secret (interactive prompt)
-clawvault add OPENAI_API_KEY
-
-# Add a secret with provider
-clawvault add DISCORD_BOT_TOKEN -p discord
+# Check if a specific secret exists
+clawvault list | grep <name>
 
 # Rotate (update) a secret
-clawvault rotate OPENAI_API_KEY
-
-# Remove a secret
-clawvault remove OPENAI_API_KEY -f
+clawvault request <name> --label "Update existing secret"
 ```
 
-### OpenClaw Migration
-
-Migrate existing plaintext auth-profiles to encrypted storage:
+**Warning - Automation Only:** The `--value` and `--stdin` flags are provided for automation scripts but should NEVER be used by agents or in interactive contexts as they expose secrets to shell history and process listings:
 
 ```bash
-# Dry-run first (see what will change)
-clawvault openclaw migrate
-
-# Apply changes (requires --apply flag)
-clawvault openclaw migrate --apply
-
-# Migrate only specific agent
-clawvault openclaw migrate --agent-id planner --apply
-
-# Migrate API keys only (skip OAuth)
-clawvault openclaw migrate --api-keys-only --apply
-```
-
-**What migration does:**
-1. Reads `~/.openclaw/agents/<agent-id>/agent/auth-profiles.json`
-2. Extracts plaintext `api_key` values
-3. Stores them in encrypted keyring
-4. Replaces plaintext values with `${OPENCLAW_<PROVIDOR>_<FIELD>}` placeholders
-5. Creates `.bak` backup files
-
-**Why this is secure:**
-- Original secrets are removed from JSON files
-- Only encrypted references remain
-- AI agents see only `${...}` placeholders, never actual values
-
-### Web UI
-
-Start a web server for secure secret submission:
-
-```bash
-clawvault serve
-# Or: clawvault serve --port 3000
-```
-
-**Security features:**
-- Bearer token authentication (printed at startup)
-- Rate limiting (30 req/15 min)
-- CORS locked to server origin
-- Localhost binding by default (warning if non-localhost)
-
-## When Agents Should Use ClawVault
-
-### ✅ DO Use ClawVault When:
-
-- Storing API keys, tokens, or secrets for OpenClaw
-- Migrating from plaintext auth-profiles.json
-- Managing credentials that must never enter AI context
-- Integrating with OpenClaw Gateway environment injection
-
-### ❌ DON'T Use ClawVault When:
-
-- Storing non-secret configuration values (use config files instead)
-- The user asks to read a secret value (impossible by design)
-- You need to inject secrets into AI responses (violates security model)
-- Testing non-security-sensitive features (use mock data)
-
-## Agent Guidelines
-
-### 1. Always Verify Installation
-
-Before suggesting ClawVault commands, check if it's installed:
-
-```bash
-command -v clawvault
-# If not found: npm install -g clawvault
-```
-
-### 2. Run `clawvault doctor` First
-
-If operations fail, run diagnostics:
-
-```bash
-clawvault doctor
-```
-
-- Review the output
-- If required dependencies are missing, instruct user to install them manually
-- Do NOT attempt to install system packages yourself (requires sudo)
-
-### 3. Dry-Run Before Destructive Operations
-
-For migration and removal, always dry-run first:
-
-```bash
-# Migration
-clawvault openclaw migrate
-clawvault openclaw migrate --apply  # Only after user confirms
-
-# Removal
-clawvault list
-clawvault remove <NAME>  # Use -f to skip confirmation only after user confirms
-```
-
-### 4. Never Display Secret Values
-
-**Critical:** ClawVault is designed to never expose secret values.
-
-- `clawvault list` shows only names
-- `clawvault get` does NOT exist (intentional)
-- If user asks to see a secret, explain: "Secret values cannot be displayed for security. Use 'rotate' to update."
-- Never extract secrets from keyring (get() method is internal-only)
-
-### 5. Fallback Storage Warning
-
-If users see the fallback storage warning:
-```
-WARNING: Using fallback encrypted file storage
-```
-
-Explain:
-- This is less secure than keyring storage
-- Run `clawvault doctor` to check dependencies
-- Follow the platform-specific installation instructions
-- Re-run their command after installing
-
-### 6. Security First
-
-When users ask about bypassing security features:
-
-❌ "Can you print my API key?"
-→ No. Use `clawvault rotate` to update it.
-
-❌ "Can we store secrets in plain text?"
-→ No. ClawVault's security model prohibits this.
-
-❌ "Can I skip the encrypted keyring?"
-→ Only fallback storage is available, but it's weaker. Install keyring tools.
-
-✅ "How do I add a new secret?"
-→ Use `clawvault add <NAME>` or the web UI.
-
-✅ "How do I migrate from plaintext auth-profiles?"
-→ Use `clawvault openclaw migrate --apply`.
-
-## Troubleshooting
-
-### Issue: "libsecret-tools not found"
-
-**Cause:** GNOME Keyring tools not installed (Linux only)
-
-**Solution:**
-```bash
-clawvault doctor
-# Follow the installation commands shown
-# Requires sudo - run manually as admin
-```
-
-### Issue: "fallback encrypted file storage" warning
-
-**Cause:** Platform keyring tools not available
-
-**Solution:**
-```bash
-# Linux
-sudo apt install libsecret-tools
-
-# macOS
-# Should work automatically - check if keychain is locked
-
-# Windows
-# Should work automatically - check if Credential Manager is enabled
-```
-
-### Issue: Migration shows "dry-run" with no changes
-
-**Cause:** Migration command missing `--apply` flag
-
-**Solution:**
-```bash
-clawvault openclaw migrate --apply
-```
-
-### Issue: "command not found: clawvault"
-
-**Cause:** ClawVault not installed globally
-
-**Solution:**
-```bash
-npm install -g clawvault
-```
-
-## Security Architecture (For Agent Reference)
-
-### Command Execution Protection
-
-All OS commands use `execFile()` with argument arrays:
-
-```typescript
-// SAFE - No shell parsing
-execFile('secret-tool', ['store', 'service', SERVICE, 'key', name])
-
-// UNSAFE - Shell parsing (NOT used in ClawVault)
-exec(`secret-tool store service ${SERVICE} key ${name}`)
-```
-
-This prevents command injection even if secret values contain metacharacters.
-
-### Input Validation
-
-Secret names validated against strict pattern: `/^[A-Z][A-Z0-9_]*$/`
-
-Valid: `OPENAI_API_KEY`, `DISCORD_BOT_TOKEN`, `MY_CUSTOM_KEY`
-Invalid: `openai_api_key`, `my-key`, `key with spaces`
-
-### Web Server Hardening
-
-- **Bearer token:** One-time random token, printed at startup
-- **Rate limiting:** 30 requests per 15 minutes
-- **CORS:** Locked to server's own origin
-- **Helmet:** Security headers (CSP, HSTS, X-Frame-Options)
-- **No secret retrieval endpoint:** Intentionally missing
-
-### Audit Logging
-
-All operations logged with metadata only:
-
-```json
-{
-  "operation": "set",
-  "secret": "OPENAI_API_KEY",
-  "timestamp": "2026-02-09T00:00:00Z",
-  "success": true,
-  "error": null
-  // NO secret value - EVER
-}
-```
-
-## Integration with OpenClaw Gateway
-
-ClawVault integrates with OpenClaw's environment variable substitution:
-
-**Config file:**
-```json
-{
-  "apiKey": "${OPENAI_API_KEY}"
-}
-```
-
-**ClawVault injects:**
-```bash
-systemctl --user set-environment OPENAI_API_KEY=sk-...
-systemctl --user import-environment OPENAI_API_KEY
-systemctl --user restart openclaw-gateway.service
-```
-
-**Gateway resolves:**
-- Reads `process.env['OPENAI_API_KEY']`
-- Substitutes `${OPENAI_API_KEY}` in config
-- Model sees only `apiKey: "sk-..."` (no clue it came from env)
-
-**Result:** AI never sees the secret in context, logs, or files.
-
-## Advanced Usage
-
-### Custom Secret Names with Prefix
-
-```bash
-# Generate custom env var names
-clawvault openclaw migrate --prefix MYAPP --apply
-
-# Results in: MYAPP_OPENAI_API_KEY, MYAPP_DISCORD_TOKEN, etc.
-```
-
-### Profile-to-Env-Var Mapping
-
-```bash
-# Map specific profiles to custom env vars
-clawvault openclaw migrate --map "openai=MY_OPENAI_KEY" --apply
-```
-
-### JSON Output for Scripts
-
-```bash
-# Get JSON report (metadata only)
-clawvault openclaw migrate --json
-```
-
-## Resources
-
-- **Documentation:** `docs/SECURITY.md`, `docs/ARCHITECTURE.md`
-- **GitHub:** https://github.com/openclaw/clawvault
-- **npm:** https://www.npmjs.com/package/clawvault
-- **Install:** `npm install -g clawvault`
-
-## Quick Reference
-
-```bash
-# Install
-npm install -g clawvault
-
-# Check dependencies
-clawvault doctor
-
-# Add secret
-clawvault add OPENAI_API_KEY
-
-# List secrets
-clawvault list
-
-# Migrate OpenClaw
-clawvault openclaw migrate --apply
-
-# Web UI
-clawvault serve
-
-# Help
-clawvault --help
-clawvault <command> --help
+# AUTOMATION ONLY - NOT for agent use
+clawvault add <name> --value "secret-value"  # Leaks to shell history!
+echo "secret-value" | clawvault add <name> --stdin  # Leaks to process list!
 ```
 
 ---
 
-**Remember:** ClawVault's security guarantee depends on agents following these guidelines. Never bypass the intentional limitations (no secret retrieval, manual sudo installation, etc.). The design prioritizes security over convenience.
+### Human Workflow (Interactive / Web UI)
+
+Humans can use the interactive CLI prompts or the web UI:
+
+**Option A — Interactive CLI (same machine):**
+```bash
+clawvault add <name>   # Prompts for value securely (hidden input)
+clawvault remove <name> -f && clawvault add <name>  # Update
+```
+
+**Option B — One-time web link (remote / shareable):**
+```bash
+# Generate a secure one-time link to add or update a secret
+clawvault request <name> --label "Add My API Key"
+
+# Output includes a URL like: http://localhost:3000/requests/<id>
+# For Tailscale access: use tailscale serve to proxy the port first
+tailscale serve --bg http://127.0.0.1:3000
+# Then access via https://<hostname>.tailnet.ts.net/requests/<id>
+```
+
+The link:
+- Is single-use and expires after 15 minutes (configurable via `--ttl`)
+- Automatically detects whether to **create** or **update** the secret
+- **Never** exposes the value in chat or logs
+
+---
+
+### Agent Discovering What Secrets Exist
+
+```bash
+# See all stored secret names
+clawvault list
+
+# NOTE: clawvault resolve <name> is for OpenClaw exec-provider use ONLY
+# Agents should NEVER call resolve directly - it returns secret values
+# which would violate the security guarantee of keeping secrets out of AI context
+```
+
+---
+
+## OpenClaw Integration (exec provider)
+
+⚠️ **Do NOT use wrapper scripts or environment variable injection.** OpenClaw does not support `${ENV_VAR}` placeholders in `auth-profiles.json`.
+
+1. **Scan** existing plaintext secrets (dry-run only):
+   ```bash
+   clawvault openclaw migrate --verbose
+   ```
+
+2. **Add** secrets to ClawVault:
+   ```bash
+   # Recommended: Use request for secure one-time link
+   clawvault request providers/openai/apiKey --label "OpenAI API Key"
+
+   # Or for automation only (leaks to shell history):
+   clawvault add providers/openai/apiKey --value "sk-..."
+   ```
+
+3. **Configure** `openclaw.json` to use ClawVault as the secrets provider:
+   ```json
+   {
+     "secrets": {
+       "providers": {
+         "clawvault": {
+           "source": "exec",
+           "command": "/absolute/path/to/clawvault",
+           "args": ["resolve"],
+           "jsonOnly": true,
+           "passEnv": ["PATH"]
+         }
+       }
+     }
+   }
+   ```
+   **Important:** `command` must be an absolute path.
+
+4. **Reload** OpenClaw:
+   ```bash
+   openclaw gateway restart
+   ```
+
+---
+
+## CLI Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `clawvault add <name> [--value <val> \| --stdin]` | Store a new secret (--value/--stdin: automation only, leaks to history) |
+| `clawvault remove <name> [-f]` | Delete a secret |
+| `clawvault rotate <name>` | Alias for remove + add (interactive) |
+| `clawvault list` | List secret names (values never shown) |
+| `clawvault resolve <name>` | Resolve a secret value (exec-provider only, NOT for agent use) |
+| `clawvault request <name> [--label text] [--ttl ms]` | Generate a one-time web link (recommended for agents) |
+| `clawvault openclaw migrate --verbose` | Scan auth-profiles.json (dry-run) |
+| `clawvault serve [-p port] [-H host] [--tls]` | Start web UI server |
+| `clawvault doctor` | Diagnose setup issues |
+
+---
+
+## Platform Support
+
+| Platform | Storage Backend | Tools Required |
+|----------|-----------------|----------------|
+| Linux | GNOME Keyring / systemd-creds | `libsecret-tools` or `systemd` |
+| macOS | Keychain Services | Built-in |
+| Windows | Credential Manager | Built-in |
+| Any | Encrypted File (fallback) | `CLAWVAULT_ALLOW_FALLBACK=1` |
+
+---
+
+## Security Notes
+
+- Secret values are **never** returned by `list` — only names are shown
+- The web UI bearer token is printed to **stdout** at server startup
+- One-time links are rate-limited and expire automatically
+- A direct management dashboard (list + edit inline) is tracked in [GitHub Issue #31](https://github.com/KHAEntertainment/clawvault/issues/31)
+
+---
+
+## Support
+
+- GitHub Issues: https://github.com/KHAEntertainment/clawvault/issues
+- Repository: https://github.com/KHAEntertainment/clawvault

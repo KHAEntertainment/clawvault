@@ -13,18 +13,22 @@ const execFileAsync = promisify(execFile)
  */
 function getStorageOverride(): string | null {
   const envOverride = process.env.CLAWVAULT_STORAGE
-  
+
   const validProviders = ['keyring', 'keychain', 'credential', 'systemd', 'fallback']
   if (envOverride && validProviders.includes(envOverride)) {
     return envOverride
   }
-  
+
   return null
 }
 
 /**
  * Map storage type string to provider info.
  * Returns null for auto-detection (no override).
+ *
+ * IMPORTANT: Only returns provider info if:
+ * - The override is 'fallback' (allowed on any OS), OR
+ * - The provider's platform matches the runtime platform
  */
 function getProviderInfo(
   override: string | null,
@@ -37,7 +41,7 @@ function getProviderInfo(
       keychain: { platform: 'darwin', hasKeyring: true, provider: 'macos' },
       credential: { platform: 'win32', hasKeyring: true, provider: 'windows' },
       systemd: { platform: 'linux', hasKeyring: true, provider: 'systemd' },
-      fallback: { platform: 'linux', hasKeyring: false, provider: 'fallback' },
+      fallback: { platform: platform, hasKeyring: false, provider: 'fallback' },
     }
     
     const info = providerMap[override]
@@ -48,7 +52,7 @@ function getProviderInfo(
     
     return null
   }
-  
+
   return null
 }
 
@@ -75,10 +79,10 @@ export async function detectPlatform(): Promise<PlatformInfo> {
       const usable = await linuxSecretToolUsable()
       if (usable) return { platform, hasKeyring: true, provider: 'linux' }
     }
-    
+
     const hasSystemdCreds = await commandExists('systemd-creds')
     if (hasSystemdCreds) return { platform, hasKeyring: true, provider: 'systemd' }
-    
+
     return { platform, hasKeyring: false, provider: 'fallback' }
   }
 
