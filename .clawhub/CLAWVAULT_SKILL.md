@@ -27,27 +27,32 @@ This allows OpenClaw to fetch secret values at runtime without keeping them in p
 
 ### Agent Workflow (Non-Interactive)
 
-Agents should **never** prompt the human for secrets. Use the CLI directly:
+Agents should **never** prompt the human for secrets. Use `clawvault request` to generate a secure one-time link:
 
 ```bash
-# Add a secret
-clawvault add <name> --value "secret-value"
-# or
-echo "secret-value" | clawvault add <name> --stdin
+# Request a secret from the human via one-time web link
+clawvault request <name> --label "Describe what this secret is for"
 
-# Rotate (update) a secret
-clawvault remove <name> -f && clawvault add <name> --value "new-secret"
-# or
-echo "new-secret" | clawvault add <name> --stdin
+# The human will receive a URL to securely provide the secret
+# The value NEVER enters shell history or AI context
 
 # List stored secrets (names only)
 clawvault list
 
 # Check if a specific secret exists
 clawvault list | grep <name>
+
+# Rotate (update) a secret
+clawvault request <name> --label "Update existing secret"
 ```
 
-**Note:** `clawvault rotate` does not currently support `--value` or `--stdin`. The workaround is `remove` + `add`.
+**Warning - Automation Only:** The `--value` and `--stdin` flags are provided for automation scripts but should NEVER be used by agents or in interactive contexts as they expose secrets to shell history and process listings:
+
+```bash
+# AUTOMATION ONLY - NOT for agent use
+clawvault add <name> --value "secret-value"  # Leaks to shell history!
+echo "secret-value" | clawvault add <name> --stdin  # Leaks to process list!
+```
 
 ---
 
@@ -85,8 +90,9 @@ The link:
 # See all stored secret names
 clawvault list
 
-# The OpenClaw exec-provider protocol resolves by secret ID:
-clawvault resolve <name>   # Returns the secret value
+# NOTE: clawvault resolve <name> is for OpenClaw exec-provider use ONLY
+# Agents should NEVER call resolve directly - it returns secret values
+# which would violate the security guarantee of keeping secrets out of AI context
 ```
 
 ---
@@ -102,6 +108,10 @@ clawvault resolve <name>   # Returns the secret value
 
 2. **Add** secrets to ClawVault:
    ```bash
+   # Recommended: Use request for secure one-time link
+   clawvault request providers/openai/apiKey --label "OpenAI API Key"
+
+   # Or for automation only (leaks to shell history):
    clawvault add providers/openai/apiKey --value "sk-..."
    ```
 
@@ -134,12 +144,12 @@ clawvault resolve <name>   # Returns the secret value
 
 | Command | Description |
 |---------|-------------|
-| `clawvault add <name> [--value <val> \| --stdin]` | Store a new secret |
+| `clawvault add <name> [--value <val> \| --stdin]` | Store a new secret (--value/--stdin: automation only, leaks to history) |
 | `clawvault remove <name> [-f]` | Delete a secret |
 | `clawvault rotate <name>` | Alias for remove + add (interactive) |
 | `clawvault list` | List secret names (values never shown) |
-| `clawvault resolve <name>` | Resolve a secret value (OpenClaw exec protocol) |
-| `clawvault request <name> [--label text] [--ttl ms]` | Generate a one-time web link |
+| `clawvault resolve <name>` | Resolve a secret value (exec-provider only, NOT for agent use) |
+| `clawvault request <name> [--label text] [--ttl ms]` | Generate a one-time web link (recommended for agents) |
 | `clawvault openclaw migrate --verbose` | Scan auth-profiles.json (dry-run) |
 | `clawvault serve [-p port] [-H host] [--tls]` | Start web UI server |
 | `clawvault doctor` | Diagnose setup issues |
