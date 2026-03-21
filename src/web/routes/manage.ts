@@ -41,6 +41,12 @@ interface ManageContext {
 }
 
 /**
+ * Valid secret name pattern: starts with uppercase letter, followed by
+ * uppercase letters, digits, or underscores only.
+ */
+const SECRET_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/
+
+/**
  * Escape HTML entities to prevent XSS attacks.
  */
 function escapeHtml(s: string): string {
@@ -252,7 +258,9 @@ export async function manageList(
     
     context.emit({ timestamp: new Date().toISOString(), operation: 'list', source: 'manage-dashboard', success: true })
     
-    const updatedSecret = typeof req.query.updated === 'string' && /^[A-Z][A-Z0-9_]*$/.test(req.query.updated)
+    // Show success banner if the user was redirected here after an update.
+    // Only the secret's NAME (an identifier, not its value) is passed in the query string.
+    const updatedName = typeof req.query.updated === 'string' && SECRET_NAME_PATTERN.test(req.query.updated)
       ? req.query.updated
       : undefined
 
@@ -260,7 +268,7 @@ export async function manageList(
       'Secret Management Dashboard',
       secrets,
       context.csrfToken,
-      updatedSecret
+      updatedName
     ))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
@@ -309,8 +317,7 @@ export async function manageUpdate(
   
   try {
     // Validate secret name format
-    const namePattern = /^[A-Z][A-Z0-9_]*$/
-    if (!namePattern.test(name)) {
+    if (!SECRET_NAME_PATTERN.test(name)) {
       context.emit({ timestamp: new Date().toISOString(), operation: 'set', secretName: name, source: 'manage-dashboard', success: false, errorMessage: 'Invalid secret name format' })
       const secrets = await secretsForErrorPage()
       res.status(400).type('html').send(htmlManagePage(

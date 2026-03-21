@@ -19,7 +19,7 @@ import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
 import type { AuditEvent } from '../storage/audit.js'
-import { loadConfig } from '../config/index.js'
+import { loadConfig, type ConfigSchema } from '../config/index.js'
 
 export interface WebServerOptions {
   port: number
@@ -107,10 +107,9 @@ export async function createServer(
 
   // Load config for manage dashboard (secret metadata lookup).
   // Falls back to empty config if the config file is missing or invalid.
-  let manageConfig: { secrets: Record<string, any> } = { secrets: {} }
+  let manageConfig: ConfigSchema = { version: 1, secrets: {}, gateway: { restartOnUpdate: false, services: [] } }
   try {
-    const loaded = await loadConfig()
-    manageConfig = loaded
+    manageConfig = await loadConfig()
   } catch {
     // If config loading fails, fall back to empty config so the server still starts.
   }
