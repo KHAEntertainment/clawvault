@@ -9,11 +9,11 @@
  src/storage/platform.ts | 157 +++++-----------------------------------
  1 file changed, 18 insertions(+), 139 deletions(-)
 
-diff --git a/src/storage/platform.ts b/src/storage/platform.ts
-index 8d04653..118916a 100644
---- a/src/storage/platform.ts
-+++ b/src/storage/platform.ts
-@@ -4,41 +4,6 @@ import { PlatformInfo } from './interfaces.js'
+NOTE: The changes described below were originally stored as a git-format
+patch for fixing src/storage/platform.ts. The underlying source file has
+since been cleaned up, so this patch header was removed to avoid keeping
+a live, in-tree git patch. The remaining contents are retained only as
+historical reference.
  
  const execFileAsync = promisify(execFile)
  
