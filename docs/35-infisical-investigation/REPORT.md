@@ -18,67 +18,75 @@
 ## 1. Infisical SDK/API Research
 
 ### SDK Information
-- **Package:** `@1password/sdk` (JavaScript/TypeScript)
-- **Version:** Latest stable
-- **Documentation:** https://developer.1password.com/docs/sdk/js/
+- **Package:** `@infisical/sdk` (JavaScript/TypeScript)
+- **Version:** Latest stable (v4+)
+- **Documentation:** https://infisical.com/docs/sdks/languages/node
 
 ### Supported Operations
 
 | Operation | Method | Description |
 |-----------|--------|-------------|
-| Read Secret | `sdk.item.find()` | Retrieve secret value by ID or title |
-| Write Secret | `sdk.item.create()` or `sdk.item.fill()` | Create or update secret |
-| Delete Secret | `sdk.item.delete()` | Remove secret |
-| List Secrets | `sdk.item.listAll()` | List all secrets |
-| Search Secrets | `sdk.item.find()` | Search by title |
+| Read Secret | `client.secrets().getSecret()` | Retrieve secret value by name/path |
+| Write Secret | `client.secrets().createSecret()` or `client.secrets().updateSecret()` | Create or update secret |
+| Delete Secret | `client.secrets().deleteSecret()` | Remove secret |
+| List Secrets | `client.secrets().listSecrets()` | List all secrets in a project/environment |
+| Search Secrets | `client.secrets().listSecrets()` + filter | Filter by name/path prefix |
 
 ### Authentication Methods
 
 Infisical supports multiple authentication models:
 
-1. **Service Tokens** (recommended for server-side apps)
-   - Generate via 1Password.com web UI
-   - Long-lived tokens (customizable TTL)
-   - No user interaction required at runtime
+1. **Universal Auth / Machine Identity** (recommended for server-side apps)
+   - Create a Machine Identity in the Infisical dashboard
+   - Provide `clientId` + `clientSecret` at runtime
+   - Long-lived, rotatable credentials; no user interaction at runtime
 
-2. **Session Tokens** (recommended for interactive CLI apps)
-   - Generated via SDK with user credentials
-   - Requires user to approve device on each run
-   - Shorter TTL (1 hour default)
+2. **Service Tokens** (legacy, for simpler setups)
+   - Generate via Infisical project settings
+   - Scoped to a single project/environment
+   - Pass as `accessToken` directly
 
-3. **API Keys**
-   - Less secure, not recommended
-   - Requires manual management
+3. **Cloud Provider Auth (AWS IAM, GCP, Azure, Kubernetes)**
+   - Federated identity via cloud provider credentials
+   - No static secrets required
 
-**Recommendation for ClawVault**: Use **Session Tokens** with user approval flow.
+**Recommendation for ClawVault**: Use **Universal Auth (Machine Identity)** for programmatic access from server-side code.
 
 ### Example Code
 
 ```typescript
-import { SDK } from '@1password/sdk'
-import { Client } from '@1password/sdk'
+import { InfisicalSDK } from '@infisical/sdk'
 
-// Initialize with session token auth
-const client = await Client.create({
-  serverURL: 'https://<your-1password-tenant>.1password.com',
-  token: 'session-token-here',
-  // Session tokens require user approval on first use
-  onTokenRefresh: () => {
-    console.log('Token expired. Please approve in 1Password app.')
-  }
+// Initialize client (defaults to https://app.infisical.com)
+const client = new InfisicalSDK({
+  siteUrl: 'https://app.infisical.com' // or your self-hosted instance
 })
 
-// Read a secret
-const item = await client.item.find('My API Key')
-if (item) {
-  console.log('Secret found:', item.fields.password.value)
-}
+// Authenticate with Universal Auth (Machine Identity)
+await client.auth().universalAuth.login({
+  clientId: process.env.INFISICAL_CLIENT_ID!,
+  clientSecret: process.env.INFISICAL_CLIENT_SECRET!
+})
+
+// List all secrets in a project/environment
+const { secrets } = await client.secrets().listSecrets({
+  projectId: '<your-project-id>',
+  environment: 'prod'
+})
+
+// Read a specific secret
+const secret = await client.secrets().getSecret({
+  projectId: '<your-project-id>',
+  environment: 'prod',
+  secretName: 'MY_API_KEY'
+})
+console.log('Secret value:', secret.secretValue)
 ```
 
 ### Dependencies
-- **@1password/sdk** (~2-5MB minified)
+- **@infisical/sdk** (~3-6MB minified)
 - Requires Node.js 18+ 
-- Requires HTTPS connectivity to 1Password.com
+- Requires HTTPS connectivity to Infisical instance (cloud or self-hosted)
 - TypeScript types included
 
 ---
@@ -91,36 +99,37 @@ if (item) {
 - **Validation:** `/^[A-Z][A-Z0-9_]*$/`
 
 ### Infisical Namespace
-- **Structure:** Hierarchical with vaults, categories, items, and fields
-  - Example vault: `Personal`
-  - Example category: `API Keys`
-  - Example item: `OpenAI API Key`
-  - Fields: Title, Notes, password, custom fields
+- **Structure:** Hierarchical with Projects, Environments, Folders, and Secrets
+  - Example project: `ClawVault`
+  - Example environment: `prod`, `dev`
+  - Example folder: `/api-keys`
+  - Secret: Flat key-value pair within an environment path
 
 **Mapping Strategy Options:**
 
 | Approach | Description | Pros | Cons |
 |----------|-------------|------|-------|
-| **Option A: Vault per Secret** | Create separate vault per ClawVault secret | - Clean mapping<br>- Simple to understand<br>- Easy to delete individual secrets | - Many vaults<br>- More complex management<br>- Doesn't map well to OpenClaw secrets |
-| **Option B: One Vault** | Use a single "ClawVault" vault | - Single vault management<br>- Maps to OpenClaw secrets pattern (provider: clawvault)<br>- Simpler migration | - Mixing unrelated secrets<br>- May confuse users<br>- Harder to delete individual secrets |
-| **Option C: Category-Based** | Use Infisical categories to group ClawVault secrets | - Maintains Infisical organization<br>- Clear semantic grouping | - Requires user to adopt Infisical structure<br>- More complex mapping |
+| **Option A: One Secret per Key** | Map each ClawVault secret to one Infisical secret key in a shared project | - Clean 1:1 mapping<br>- Simple to understand<br>- Easy to delete individual secrets | - All secrets share the same environment<br>- Less granular access control |
+| **Option B: One Project** | Use a single "ClawVault" Infisical project with `prod` environment | - Single project management<br>- Maps to OpenClaw secrets pattern (provider: clawvault)<br>- Simpler migration | - Mixing unrelated secrets<br>- May confuse users with other Infisical projects |
+| **Option C: Folder-Based** | Use Infisical folders to group ClawVault secrets by category | - Maintains Infisical organization<br>- Clear semantic grouping | - Requires user to adopt Infisical folder structure<br>- More complex mapping |
 
-**Recommendation:** **Option B** (Single Vault with provider: clawvault) provides the cleanest integration with OpenClaw while maintaining simplicity.
+**Recommendation:** **Option B** (Single Project with provider: clawvault) provides the cleanest integration with OpenClaw while maintaining simplicity.
 
 ### Proposed Mapping
 
 ```typescript
 // Infisical SDK structure
-Vault: ClawVault
-├── Category: API Keys
-│   ├── Item: OPENAI_API_KEY
-│   ├── Item: DISCORD_BOT_TOKEN
-│   ├── Item: AWS_ACCESS_KEY_ID
-│   └── Item: AWS_SECRET_ACCESS_KEY
-└── Category: Other
-    ├── Item: DATABASE_URL
-    ├── Item: USER_PASSWORD
-    └── Item: API_KEY
+Project: ClawVault
+└── Environment: prod
+    ├── Folder: /api-keys
+    │   ├── Secret: OPENAI_API_KEY
+    │   ├── Secret: DISCORD_BOT_TOKEN
+    │   ├── Secret: AWS_ACCESS_KEY_ID
+    │   └── Secret: AWS_SECRET_ACCESS_KEY
+    └── Folder: /other
+        ├── Secret: DATABASE_URL
+        ├── Secret: USER_PASSWORD
+        └── Secret: API_KEY
 ```
 
 **Metadata for mapping:**
@@ -154,13 +163,13 @@ Vault: ClawVault
 
 | Aspect | Rating | Details |
 |--------|--------|---------|
-| Encryption | ⭐⭐⭐ Excellent | AES-256-GCM, hardware key support, per-item encryption |
-| Authentication | ⭐⭐⭐ Excellent | Multi-factor auth, biometric unlock options, device approval |
+| Encryption | ⭐⭐⭐ Excellent | End-to-end AES-256-GCM, per-secret encryption |
+| Authentication | ⭐⭐⭐ Excellent | MFA (TOTP/email), SSO (SAML/OIDC), Machine Identity |
 | SOC 2 | ✅ Certified | Type II certified (audited annually) |
 | Pentesting | ✅ Verified | Regular third-party security assessments |
-| Audit Logging | ✅ Yes | Comprehensive audit trails |
+| Audit Logging | ✅ Yes | Comprehensive audit trails with IP/user tracking |
 | CVE History | ✅ Clean | No high-severity vulnerabilities in recent years |
-| Data Centers | ✅ Compliant | GDPR, SOC 2 compliant data centers |
+| Data Centers | ✅ Compliant | GDPR, SOC 2 compliant; self-hosted option available |
 
 ### ClawVault
 
@@ -202,9 +211,9 @@ Vault: ClawVault
 | Caching | ✅ Yes | ⭐⭐⭐ Excellent (local SQLite) |
 | Offline access | ✅ Yes | ⭐ Good (read operations) |
 | Security certification | ✅ SOC 2 | ⚠️ Not certified but audited |
-| Authentication flexibility | ⚠️ Limited | Session tokens only | ✅ Multiple auth types |
+| Authentication flexibility | ⚠️ Limited (bearer token only) | ✅ Multiple auth types (Universal Auth, AWS IAM, GCP, Azure, K8s) |
 | Management complexity | ⭐ Simple | Single JSON config | ⚠️⭐⭐ Enterprise vault/category structure |
-| Dependencies | ⭐ Minimal | None | ⚠️⭐⭐ @1password/sdk (2-5MB) |
+| Dependencies | ⭐ Minimal | None | ⚠️⭐⭐ @infisical/sdk (3-6MB) |
 
 **Comparison Summary:** OpenClaw's native secrets are simpler, better integrated, and sufficient for OpenClaw's use case. Infisical integration adds unnecessary complexity.
 
@@ -241,8 +250,8 @@ Vault: ClawVault
 ### User Burden
 
 - **ClawVault:** Minimal learning curve, single tool
-- **Infisical:** Requires 1Password app, account, device approval on first use
-- **Network:** ClawVault works offline; Infisical requires HTTPS to 1Password.com
+- **Infisical:** Requires Infisical account, project setup, and machine identity configuration
+- **Network:** ClawVault works offline; Infisical requires HTTPS to the Infisical instance (cloud or self-hosted)
 
 **Recommendation:** Integration would add significant user friction without providing proportional value for target audience.
 
@@ -258,7 +267,7 @@ Vault: ClawVault
 | Secret path mapping logic | 2-3 days | Medium (namespace mapping, field handling) |
 | InfisicalStorageProvider class | 1-2 days | Medium (implement StorageProvider interface) |
 | Configuration (CLAWVAULT_INFISICAL_VAULT, etc.) | 0.5 days | Low (add env var, documentation) |
-| Testing (unit, integration) | 2-3 days | Medium (mock 1Password, test mapping) |
+| Testing (unit, integration) | 2-3 days | Medium (mock Infisical SDK, test mapping) |
 | Documentation | 1 day | Low (this report + AGENTS.md update) |
 | Error handling | 1 day | Low (Infisical SDK error handling) |
 
@@ -281,7 +290,7 @@ Vault: ClawVault
 
 1. **Simpler Architecture:** OpenClaw's native secrets system is simpler and purpose-built
 2. **Better Integration:** ClawVault already implements exec-provider protocol perfectly
-3. **No External Dependencies:** No need for @1password/sdk package
+3. **No External Dependencies:** No need for @infisical/sdk package
 4. **Offline-First:** Works entirely offline without additional infrastructure
 5. **Lower Maintenance:** No SDK updates or external changes to track
 6. **OpenClaw Alignment:** Native secrets are now the recommended approach for OpenClaw v0.2.0+
@@ -290,7 +299,7 @@ Vault: ClawVault
 ### When Infisical Might Make Sense
 
 1. **Enterprise Users:** If target audience includes enterprise security teams needing SOC 2 compliance, audit trails, and centralized secret management across multiple tools, Infisical could be appropriate.
-2. **1Password Existing Users:** If significant portion of the user base already uses 1Password, integration would provide unified secret access.
+2. **Infisical Existing Users:** If a significant portion of the user base already uses Infisical, integration would provide unified secret access without adopting a new tool.
 3. **High-Security Requirements:** Compliance requirements (FedRAMP, PCI DSS, HIPAA) that mandate enterprise-grade secret management with audit trails and MFA.
 4. **Advanced Workflows:** Need vault sharing, team collaboration, secret access policies, approval workflows, secrets rotation automation.
 
@@ -369,6 +378,6 @@ Instead of full integration, create a **OpenClaw plugin for Infisical**:
 
 ## References
 
-- Infisical SDK Documentation: https://developer.1password.com/docs/sdk/js/
+- Infisical SDK Documentation: https://infisical.com/docs/sdks/languages/node
 - OpenClaw Documentation: https://docs.openclaw.ai
 - OpenClaw v0.2.0+ Native Secrets: https://github.com/openclaw/openclaw/releases/tag/v0.2.0
