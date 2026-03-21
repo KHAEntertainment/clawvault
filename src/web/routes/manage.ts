@@ -363,10 +363,9 @@ export async function manageUpdate(
     // Check if secret exists in storage or is defined in config (allowed)
     let secretExists = false
     try {
-      const existingValue = await context.storage.get(name)
-      secretExists = existingValue !== null && existingValue !== undefined
+      secretExists = await context.storage.has(name)
     } catch {
-      // If get() throws, the secret doesn't exist
+      // If has() throws, treat the secret as non-existent
       secretExists = false
     }
 

@@ -338,7 +338,8 @@ export async function createServer(
             }
           }
         } catch (err) {
-          alert('Network error: ' + err.message);
+          const msg = err instanceof Error ? err.message : String(err);
+          alert('Network error: ' + msg);
           if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Save';
