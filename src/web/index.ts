@@ -140,7 +140,7 @@ export async function createServer(
     max: 30,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { success: false, error: 'Rate limit exceeded. Please wait 15 minutes before trying again.' }
+    message: { success: false, message: 'Rate limit exceeded. Please wait 15 minutes before trying again.' }
   })
 
   // --- Body parsing ---
@@ -232,7 +232,7 @@ export async function createServer(
         // Keep user on the same page for simple validation failures.
         if (msg) {
           if (resp.status === 400) {
-            try { const j = await resp.json(); msg.textContent = j.error || 'Invalid submission. Please check the value and retry.'; }
+            try { const j = await resp.json(); msg.textContent = j.message || 'Invalid submission. Please check the value and retry.'; }
             catch { msg.textContent = 'Invalid submission. Please check the value and retry.'; }
           } else if (resp.status === 410) {
             msg.textContent = 'This link has expired or already been used.';
