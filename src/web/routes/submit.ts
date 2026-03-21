@@ -79,9 +79,13 @@ export async function submitSecret(
       }
     })
   } catch (error: unknown) {
+    // Log error name and message for server-side debugging.
+    // Storage providers throw system-level errors (e.g., keyring command failures)
+    // that do not contain secret values, so error.message is safe to log.
     const errorName = error instanceof Error ? error.name : 'UnknownError'
-    console.error(`Failed to store secret "${secretName}"`, { error: errorName })
-    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`Failed to store secret "${secretName}"`, { error: errorName, message: errorMessage })
+
     // Never include provider/internal details in client-facing responses
     errorResponse(res, 500, 'Server error. Please try again later.')
   }
