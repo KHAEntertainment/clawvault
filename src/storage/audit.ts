@@ -21,6 +21,7 @@ export interface AuditEvent {
   secretName?: string
   success: boolean
   errorMessage?: string
+  source?: string  // Tag events with source for attribution (e.g., 'manage-dashboard')
 }
 
 export type AuditHandler = (event: AuditEvent) => void

@@ -3,39 +3,6 @@
  *
  * Provides an Express-based web interface for submitting secrets directly
  * to the encrypted keyring. Secrets bypass AI context entirely.
- *
- * Security architecture (for agents troubleshooting issues):
- *
- * 1. BINDING: Server binds to localhost (127.0.0.1) by default. Binding to
- *    any other host triggers a prominent warning because it exposes the
- *    secret-submission endpoint to the network.
- *
- * 2. AUTH TOKEN: On startup a one-time bearer token is generated and printed
- *    to the terminal. All API requests must include this token in the
- *    Authorization header. The HTML form injects it automatically via a
- *    template variable. This prevents other local processes from using the
- *    API without the token.
- *
- * 3. RATE LIMITING: /api/submit is limited to 30 requests per 15-minute
- *    window per IP. This prevents brute-force writes to the keyring.
- *
- * 4. CORS: Origin is locked to the server's own origin (scheme://host:port).
- *    Cross-origin requests from malicious browser pages are blocked.
- *
- * 5. HELMET: Standard security headers (CSP, HSTS, X-Frame-Options, etc.)
- *    are applied by helmet middleware.
- *
- * 6. NO SECRET VALUES IN RESPONSES: The /api/submit route returns metadata
- *    only (name + length). The /api/status route returns names only.
- *    There is intentionally no "get secret" endpoint.
- *
- * If a user reports "403 Forbidden" or "Unauthorized":
- *   → They need the bearer token printed at startup.
- * If a user reports "CORS error":
- *   → They are accessing from a different origin (e.g. a browser extension).
- *     They must use the same origin the server is bound to.
- * If a user reports "Too many requests":
- *   → Rate limit hit. Wait 15 minutes or restart the server.
  */
 
 import { randomBytes } from 'crypto'
@@ -47,49 +14,28 @@ import { type StorageProvider } from '../storage/index.js'
 import { submitSecret } from './routes/submit.js'
 import { statusRoute } from './routes/status.js'
 import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.js'
+import { manageList, manageUpdate } from './routes/manage.js'
 import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
 import { errorResponse } from './utils.js'
 
 export interface WebServerOptions {
-  /** Port to listen on (default: 3000) */
   port: number
-  /** Host to bind to (default: 'localhost') */
   host: string
-  /** Optional TLS configuration for HTTPS */
-  tls?: {
-    cert: string
-    key: string
-  }
-  /** Allow binding non-localhost over HTTP (strongly discouraged) */
+  tls?: { cert: string; key: string }
   allowInsecureHttp?: boolean
-  /** Optional request store (used for one-time secret request links) */
   requestStore?: SecretRequestStore
-  /** Override default request TTL (ms) */
   requestTtlMs?: number
 }
 
 export interface ServerStartResult {
-  /** Bearer token required for API access */
   token: string
-  /** Server origin (scheme://host:port) */
   origin: string
-  /** One-time request store */
   requestStore: SecretRequestStore
-  /** Close server */
   close: () => Promise<void>
 }
 
-
-/**
- * Create and configure the Express application.
- *
- * @param storage - Storage provider instance
- * @param options - Server configuration options
- * @param token  - Bearer token for API auth
- * @returns Configured Express app
- */
 export async function createServer(
   storage: StorageProvider,
   options: WebServerOptions,
@@ -112,9 +58,6 @@ export async function createServer(
         connectSrc: ["'self'"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
-        // IMPORTANT: helmet enables `upgrade-insecure-requests` by default, which breaks
-        // HTTP-only (no TLS) tailscale/localhost deployments by rewriting subresource loads
-        // and form posts to https.
         ...(options.tls ? {} : { upgradeInsecureRequests: null })
       }
     },
@@ -127,7 +70,7 @@ export async function createServer(
   const origin = `${protocol}://${options.host}:${options.port}`
   app.use(cors({ origin, credentials: false }))
 
-  // --- Rate limiting on submission endpoint ---
+  // --- Rate limiting ---
   const submitLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 30,
@@ -136,9 +79,31 @@ export async function createServer(
     message: { success: false, message: 'Rate limit exceeded. Please wait 15 minutes before trying again.' }
   })
 
+  const manageLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false
+  })
+
   // --- Body parsing ---
   app.use(express.urlencoded({ extended: true }))
   app.use(express.json({ limit: '64kb' }))
+
+  // --- Cookie parsing (manual implementation for CSRF) ---
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    req.cookies = {}
+    const cookieHeader = req.headers.cookie
+    if (cookieHeader) {
+      cookieHeader.split(';').forEach(cookie => {
+        const [name, ...rest] = cookie.split('=')
+        if (name && rest.length > 0) {
+          req.cookies[name.trim()] = rest.join('=').trim()
+        }
+      })
+    }
+    next()
+  })
 
   // --- Bearer token auth for API routes ---
   const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
@@ -150,6 +115,35 @@ export async function createServer(
     next()
   }
 
+  // Load config for manage dashboard (secret metadata lookup).
+  // Falls back to empty config if the config file is missing or invalid.
+  let manageConfig: ConfigSchema = { version: 1, secrets: {}, gateway: { restartOnUpdate: false, services: [] } }
+  try {
+    manageConfig = await loadConfig()
+  } catch {
+    // If config loading fails, fall back to empty config so the server still starts.
+  }
+
+  // Create an audit emitter that forwards events to the storage provider's audit handler
+  // while redacting secret values (only include metadata: secret id/name, actor, action, timestamp, source)
+  const forwardingAuditEmit = (event: AuditEvent): void => {
+    // Redact any secret values from the event before forwarding
+    const redactedEvent: AuditEvent = {
+      timestamp: event.timestamp,
+      operation: event.operation,
+      source: event.source || 'manage-dashboard',
+      success: event.success,
+      ...(event.secretName && { secretName: event.secretName }),
+      ...(event.errorMessage && { errorMessage: event.errorMessage }),
+      // Explicitly exclude secretValue and other sensitive fields
+    }
+
+    // Forward to the storage provider's audit handler if it's an AuditedStorageProvider
+    if ('emit' in storage && typeof storage.emit === 'function') {
+      (storage as any).emit(redactedEvent)
+    }
+  }
+
   // --- Health check (no auth required) ---
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: Date.now() })
@@ -157,10 +151,7 @@ export async function createServer(
 
   // --- Static assets (no auth required) ---
   app.get('/static/requests.js', (_req: Request, res: Response) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
-    res.setHeader('Pragma', 'no-cache')
-    res.setHeader('Expires', '0')
-    res.setHeader('Surrogate-Control', 'no-store')
+    res.setHeader('Cache-Control', 'no-store')
     res.type('application/javascript').send(`// ClawVault request form UX helpers
 (() => {
   function byId(id){ return document.getElementById(id); }
@@ -170,17 +161,11 @@ export async function createServer(
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    // Close button on success page
     const closeBtn = byId('closeBtn');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
         const closeMsg = byId('closeMsg');
-        // Attempt to close (works reliably for scripted windows). For normal tabs,
-        // most mobile browsers will ignore window.close().
         window.close();
-
-        // Fallback: many mobile browsers block closing a regular tab.
-        // In that case, at least clear the page and show a helpful message.
         setTimeout(() => {
           try {
             if (closeMsg) closeMsg.textContent = 'All set. You can close this tab.';
@@ -190,22 +175,18 @@ export async function createServer(
       });
     }
 
-    // Request form submit UX
     const form = byId('secretForm');
     const btn = byId('submitBtn');
     const msg = byId('statusMsg');
     if (!form) return;
 
     form.addEventListener('submit', async (e) => {
-      // Prevent immediate navigation so the user actually sees feedback.
       e.preventDefault();
-
       const mode = (form.dataset && form.dataset.mode) ? form.dataset.mode : 'create';
       const workingLabel = mode === 'update' ? 'Updating...' : 'Storing...';
       setStatus(btn, msg, mode === 'update' ? 'Updating... please wait' : 'Submitting... please wait', workingLabel);
 
       try {
-        // Server expects application/x-www-form-urlencoded (express.urlencoded).
         const body = new URLSearchParams(new FormData(form) as any);
         const resp = await fetch(form.action, {
           method: 'POST',
@@ -222,7 +203,6 @@ export async function createServer(
           return;
         }
 
-        // Keep user on the same page for simple validation failures.
         if (msg) {
           if (resp.status === 400) {
             try { const j = await resp.json(); msg.textContent = j.message || 'Invalid submission. Please check the value and retry.'; }
@@ -238,17 +218,11 @@ export async function createServer(
           }
         }
         if (btn) {
-          const def = (btn.dataset && btn.dataset.defaultText) ? btn.dataset.defaultText : 'Submit';
           btn.disabled = false;
-          btn.textContent = def;
+          btn.textContent = 'Submit';
         }
       } catch {
         if (msg) msg.textContent = 'Network error. Please retry.';
-        if (btn) {
-          const def = (btn.dataset && btn.dataset.defaultText) ? btn.dataset.defaultText : 'Submit';
-          btn.disabled = false;
-          btn.textContent = def;
-        }
       }
     });
   });
@@ -256,24 +230,166 @@ export async function createServer(
 `)
   })
 
-  // Logo asset (embedded to avoid filesystem path issues in ESM builds)
+  // Logo asset
   app.get('/static/logo.jpg', (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'public, max-age=3600')
     const buf = Buffer.from(CLAWVAULT_LOGO_JPG_BASE64, 'base64')
     res.type('image/jpeg').send(buf)
   })
 
+  // Manage dashboard JS (served as static asset to comply with CSP script-src 'self')
+  app.get('/static/manage.js', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store')
+    res.type('application/javascript').send(`// ClawVault manage dashboard UX helpers
+(() => {
+  function hideAllExpandForms() {
+    document.querySelectorAll('.expand-form').forEach(function(form) {
+      form.style.display = 'none';
+    });
+  }
+
+  // Get CSRF token from cookie
+  function getCsrfToken() {
+    const match = document.cookie.match(/csrf_token=([^;]+)/);
+    return match ? match[1] : '';
+  }
+
+  // Get bearer token from sessionStorage or prompt user
+  function getBearerToken() {
+    let token = sessionStorage.getItem('clawvault_bearer_token');
+    if (!token) {
+      token = prompt('Enter your ClawVault bearer token (from terminal):');
+      if (token) {
+        sessionStorage.setItem('clawvault_bearer_token', token);
+      }
+    }
+    return token;
+  }
+
+  window.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.toggle-expand-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var secret = btn.getAttribute('data-secret');
+        var formId = 'update-form-' + secret;
+        document.querySelectorAll('.expand-form').forEach(function(form) {
+          if (form.id !== formId) form.style.display = 'none';
+        });
+        var targetForm = document.getElementById(formId);
+        if (targetForm) targetForm.style.display = 'block';
+      });
+    });
+
+    document.querySelectorAll('.cancel-expand-btn').forEach(function(btn) {
+      btn.addEventListener('click', hideAllExpandForms);
+    });
+
+    // Intercept form submissions to add Bearer token header
+    document.querySelectorAll('.update-secret-form').forEach(function(form) {
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+        const secretName = form.getAttribute('data-secret-name');
+        const secretValue = formData.get('secretValue');
+        const csrfToken = getCsrfToken();
+        const bearerToken = getBearerToken();
+
+        if (!bearerToken) {
+          alert('Bearer token is required. Please refresh and try again.');
+          return;
+        }
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Saving...';
+        }
+
+        try {
+          const response = await fetch('/manage/' + encodeURIComponent(secretName) + '/update', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + bearerToken,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              secretValue: secretValue,
+              _csrf: csrfToken
+            })
+          });
+
+          if (response.redirected || response.status === 303) {
+            window.location.href = response.url || '/manage?updated=' + encodeURIComponent(secretName);
+          } else if (response.ok) {
+            const html = await response.text();
+            document.open();
+            document.write(html);
+            document.close();
+          } else if (response.status === 401) {
+            sessionStorage.removeItem('clawvault_bearer_token');
+            alert('Authentication failed. Please refresh and try again.');
+            window.location.reload();
+          } else {
+            const text = await response.text();
+            alert('Error: ' + (text || 'Failed to update secret'));
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Save';
+            }
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          alert('Network error: ' + msg);
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save';
+          }
+        }
+      });
+    });
+  });
+})();
+`)
+  })
+
   // --- API routes (auth required) ---
   app.post('/api/submit', authMiddleware, submitLimiter, (req: Request, res: Response) => submitSecret(req, res, storage))
   app.get('/api/status', authMiddleware, (req: Request, res: Response) => statusRoute(req, res, storage))
-
-  // Create one-time secret request link
   app.post('/api/requests', authMiddleware, (req: Request, res: Response) => apiCreateRequest(req, res, requestStore))
+
+  // --- Manage dashboard routes (auth required) ---
+  app.get('/manage', authMiddleware, manageLimiter, (req: Request, res: Response) => {
+    // Generate fresh CSRF token for this request
+    const csrfToken = randomBytes(16).toString('hex')
+
+    // Set CSRF token as a non-HttpOnly cookie scoped to /manage with SameSite and secure flags
+    const cookieOptions = [
+      `csrf_token=${csrfToken}`,
+      'Path=/manage',
+      'SameSite=Strict',
+      'Max-Age=3600', // 1 hour TTL
+      options.tls ? 'Secure' : '', // Secure flag only if using TLS
+    ].filter(Boolean).join('; ')
+
+    res.setHeader('Set-Cookie', cookieOptions)
+    manageList(req, res, { storage, config: manageConfig, csrfToken, emit: forwardingAuditEmit })
+  })
+
+  app.post('/manage/:name/update', authMiddleware, manageLimiter, express.urlencoded({ extended: true }), (req: Request, res: Response) => {
+    // Validate double-submit CSRF token
+    const cookieToken = req.cookies?.csrf_token
+    const bodyToken = req.body._csrf
+
+    if (!cookieToken || !bodyToken || cookieToken !== bodyToken) {
+      res.status(403).json({ success: false, error: 'Invalid CSRF token. Please refresh the page.' })
+      return
+    }
+
+    manageUpdate(req, res, { storage, config: manageConfig, csrfToken: bodyToken, emit: forwardingAuditEmit })
+  })
 
   // --- HTML forms ---
   app.get('/', (_req: Request, res: Response) => {
-    // Serve a minimal UI inline to avoid filesystem path issues in ESM builds.
-    // (One-time request flow lives under /requests/:id.)
     res.status(200).type('html').send(`<!doctype html>
 <html lang="en">
 <head>
@@ -300,6 +416,9 @@ export async function createServer(
     <h2>API access</h2>
     <p class="muted">Use the bearer token printed in your terminal.</p>
     <p><code>POST /api/submit</code> (auth required)</p>
+    <p><code>GET /api/status</code> (auth required)</p>
+    <p><code>GET /manage</code> (auth required) — Secret management dashboard</p>
+    <p><code>POST /manage/:name/update</code> (auth required) — Update secret</p>
     <p><code>POST /api/requests</code> (auth required)</p>
     <p><code>GET /requests/:id</code> (no auth)</p>
   </div>
@@ -311,7 +430,6 @@ export async function createServer(
   })
 
   // One-time request pages do NOT require bearer token
-  // Apply rate limiting to submission endpoint
   app.get('/requests/:id', (req: Request, res: Response, next: NextFunction) => {
     requestForm(req, res, requestStore, storage).catch(next)
   })
@@ -322,17 +440,10 @@ export async function createServer(
   return app
 }
 
-/**
- * Start the web server.
- *
- * Generates a one-time bearer token, prints it to stdout, and starts
- * listening. Returns the token so the caller can display it.
- */
 export async function startServer(
   storage: StorageProvider,
   options: WebServerOptions
 ): Promise<ServerStartResult> {
-  // Enforce insecure HTTP policy if TLS is not enabled.
   if (!options.tls) {
     const policy = decideInsecureHttpPolicy(options.host, options.allowInsecureHttp ?? false)
     if (!policy.allow) {
@@ -355,10 +466,7 @@ export async function startServer(
     const fs = await import('fs')
 
     server = https.createServer(
-      {
-        cert: fs.readFileSync(options.tls.cert),
-        key: fs.readFileSync(options.tls.key)
-      },
+      { cert: fs.readFileSync(options.tls.cert), key: fs.readFileSync(options.tls.key) },
       app
     )
 

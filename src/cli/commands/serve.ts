@@ -15,6 +15,7 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { createStorage } from '../../storage/index.js'
+import { AuditedStorageProvider } from '../../storage/audit.js'
 
 interface ServeOptions {
   port: string
@@ -64,7 +65,8 @@ export const serveCommand = new Command('serve')
       throw error
     }
 
-    const storage = await createStorage()
+    const rawStorage = await createStorage()
+    const storage = new AuditedStorageProvider(rawStorage)
 
     // Policy: refuse insecure HTTP on non-localhost unless Tailscale or explicit override.
     if (!options.tls) {
