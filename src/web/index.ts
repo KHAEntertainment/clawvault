@@ -50,6 +50,7 @@ import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.
 import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
+import { errorResponse } from './utils/response.js'
 
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */
@@ -132,7 +133,7 @@ export async function createServer(
     max: 30,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { success: false, error: 'Too many requests. Try again later.' }
+    message: { success: false, message: 'Rate limit exceeded. Please wait 15 minutes before trying again.' }
   })
 
   // --- Body parsing ---
@@ -143,7 +144,7 @@ export async function createServer(
   const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
     const authHeader = req.headers.authorization
     if (!authHeader || authHeader !== `Bearer ${token}`) {
-      res.status(401).json({ success: false, error: 'Unauthorized: invalid or missing bearer token' })
+      errorResponse(res, 401, 'Unauthorized. Please check your bearer token.')
       return
     }
     next()
@@ -224,7 +225,7 @@ export async function createServer(
         // Keep user on the same page for simple validation failures.
         if (msg) {
           if (resp.status === 400) {
-            try { const j = await resp.json(); msg.textContent = j.error || 'Invalid submission. Please check the value and retry.'; }
+            try { const j = await resp.json(); msg.textContent = j.message || 'Invalid submission. Please check the value and retry.'; }
             catch { msg.textContent = 'Invalid submission. Please check the value and retry.'; }
           } else if (resp.status === 410) {
             msg.textContent = 'This link has expired or already been used.';
