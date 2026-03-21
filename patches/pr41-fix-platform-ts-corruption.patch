@@ -1,15 +1,10 @@
-From b74113a0a7fd118c20fc09d9d35b90ce294e5f36 Mon Sep 17 00:00:00 2001
-From: Claude <noreply@anthropic.com>
-Date: Sat, 21 Mar 2026 04:25:48 +0000
-Subject: [PATCH] Fix corrupted platform.ts: remove duplicate imports and dead
- code
-
-platform.ts had triple-duplicated imports, three copies of
-getStorageOverride(), and orphaned code blocks from a bad merge.
-Consolidated into a single clean version preserving the
-getProviderInfo() helper and CLAWVAULT_STORAGE override support.
-
-https://claude.ai/code/session_01EVWokkfuvpFyxKPDkjmhab
+# NOTE: The changes described below were originally stored as a git-format
+# patch for fixing src/storage/platform.ts. The underlying source file has
+# since been cleaned up, so this patch header was removed to avoid keeping
+# a live, in-tree git patch. The remaining contents are retained only as
+# historical reference.
+#
+# Original analysis performed in an AI assistant session (private link removed).
 ---
  src/storage/platform.ts | 157 +++++-----------------------------------
  1 file changed, 18 insertions(+), 139 deletions(-)
