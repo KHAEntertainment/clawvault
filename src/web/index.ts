@@ -50,14 +50,7 @@ import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.
 import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
-
-/**
- * Centralized error response helper for consistent API error formatting.
- * Ensures all error responses follow the same structure and never leak sensitive information.
- */
-function errorResponse(res: Response, status: number, message: string): void {
-  res.status(status).json({ success: false, message })
-}
+import { errorResponse } from './utils/response.js'
 
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */

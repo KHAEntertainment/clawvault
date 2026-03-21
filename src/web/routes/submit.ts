@@ -9,17 +9,10 @@
 
 import * as express from 'express'
 import { type StorageProvider } from '../../storage/index.js'
+import { errorResponse } from '../utils/response.js'
 
 type Request = express.Request
 type Response = express.Response
-
-/**
- * Error response helper function for consistent error formatting.
- * Must match the one in index.ts to ensure API consistency.
- */
-function errorResponse(res: express.Response, status: number, message: string): void {
-  res.status(status).json({ success: false, message })
-}
 
 /**
  * Request body schema for secret submission
@@ -47,27 +40,32 @@ export async function submitSecret(
 ): Promise<void> {
   const { secretName, secretValue, description } = req.body as SubmitRequestBody
 
-  // Validate required fields
-  if (!secretName || typeof secretName !== 'string') {
-    errorResponse(res, 400, 'Invalid request. Please check your input and try again.')
+  // Validate required fields with specific, user-friendly messages
+  if (!secretName) {
+    errorResponse(res, 400, 'Secret name is required')
     return
   }
 
-  if (typeof secretValue !== 'string') {
-    errorResponse(res, 400, 'Invalid request. Please check your input and try again.')
+  if (typeof secretName !== 'string') {
+    errorResponse(res, 400, 'Secret name must be a string')
     return
   }
 
   // Validate secret name format (alphanumeric, underscores, uppercase start)
   const namePattern = /^[A-Z][A-Z0-9_]*$/
   if (!namePattern.test(secretName)) {
-    errorResponse(res, 400, 'Invalid request. Please check your input and try again.')
+    errorResponse(res, 400, 'Secret name must start with an uppercase letter and contain only A–Z, 0–9, or _')
     return
   }
 
-  // Validate secret value is not empty
+  // Validate secret value
+  if (typeof secretValue !== 'string') {
+    errorResponse(res, 400, 'Secret value must be a string')
+    return
+  }
+
   if (secretValue.length === 0) {
-    errorResponse(res, 400, 'Invalid request. Please check your input and try again.')
+    errorResponse(res, 400, 'Secret value is required')
     return
   }
 
@@ -86,8 +84,8 @@ export async function submitSecret(
       }
     })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error(`Failed to store secret "${secretName}": ${message}`)
+    const errorName = error instanceof Error ? error.name : 'UnknownError'
+    console.error(`Failed to store secret "${secretName}"`, { error: errorName })
 
     // Never include provider/internal details in client-facing responses
     errorResponse(res, 500, 'Server error. Please try again later.')
