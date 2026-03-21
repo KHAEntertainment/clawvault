@@ -50,7 +50,7 @@ import { apiCreateRequest, requestForm, requestSubmit } from './routes/requests.
 import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
-import { errorResponse } from './utils/response.js'
+import { errorResponse } from './utils.js'
 
 export interface WebServerOptions {
   /** Port to listen on (default: 3000) */

@@ -118,8 +118,6 @@ See full details: [docs/MIGRATION.md](docs/MIGRATION.md)
 
 ```bash
 npm install -g @khaentertainment/clawvault
-# or
-npx @khaentertainment/clawvault <command>
 ```
 
 ## Requirements

@@ -78,7 +78,7 @@ describe('Web Server Security', () => {
     it('should reject requests without auth header', async () => {
       const res = await request(server, 'GET', '/api/status')
       expect(res.status).toBe(401)
-      expect(JSON.parse(res.body).error).toContain('Unauthorized')
+      expect(JSON.parse(res.body).message).toBe('Unauthorized. Please check your bearer token.')
     })
 
     it('should reject requests with wrong auth', async () => {
