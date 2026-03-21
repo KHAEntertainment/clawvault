@@ -90,9 +90,7 @@ See full details: [docs/MIGRATION.md](docs/MIGRATION.md)
 ## Installation
 
 ```bash
-npm install -g clawvault
-# or
-npx clawvault <command>
+npm install -g @karkinos/clawvault
 ```
 
 ## Requirements

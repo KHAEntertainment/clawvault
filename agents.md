@@ -1,6 +1,6 @@
 # Agents Guide (ClawVault)
 
-ClawVault is a security-sensitive secret manager for OpenClaw. Secrets are stored in OS-native encrypted keyrings (GNOME Keyring, macOS Keychain, Windows Credential Manager).
+ClawVault is a security-sensitive secret manager for OpenClaw. Secrets are stored in OS-native encrypted keyrings with auto-detection per-platform: Linux (secret-tool), macOS (security), Windows (cmdkey), with a fallback to an encrypted file backend (FallbackProvider) when OS-native keyrings are unavailable.
 
 **PRIMARY INVARIANT:** Secret values must never enter AI-visible context (logs, errors, test output, HTTP responses, CLI output).
 
@@ -11,10 +11,10 @@ npm install               # Install dependencies
 npm run build            # Build TypeScript (output to dist/)
 npm run dev              # Watch mode for development
 npm test                 # Run all tests (unit, integration, security)
-npx jest test/unit/      # Unit tests only
-npx jest test/integration/   # Integration tests only
-npx jest test/security/  # Security tests (CRITICAL - must pass)
-npx jest test/unit/storage/linux.test.ts  # Single test file
+npm test -- test/unit/      # Unit tests only
+npm test -- test/integration/   # Integration tests only
+npm test -- test/security/  # Security tests (CRITICAL - must pass)
+npm test -- test/unit/storage/linux.test.ts  # Single test file
 npm test -- --coverage  # Run with coverage
 npm test -- --watch     # Watch mode for tests
 npm run lint            # Linting
