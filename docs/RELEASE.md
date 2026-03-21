@@ -136,7 +136,7 @@ MIT License - see LICENSE file for details
 
 **BREAKING CHANGE: Package Rename**
 
-The package has been renamed from `clawvault` to `@karkinos/clawvault`.
+The package has been renamed from `clawvault` to `@khaentertainment/clawvault`.
 
 **Migration Steps:**
 
@@ -144,7 +144,7 @@ The package has been renamed from `clawvault` to `@karkinos/clawvault`.
    ```json
    {
      "dependencies": {
-       "@karkinos/clawvault": "^0.2.0"
+       "@khaentertainment/clawvault": "^0.2.0"
      }
    }
    ```
@@ -156,19 +156,20 @@ The package has been renamed from `clawvault` to `@karkinos/clawvault`.
    const clawvault = require('clawvault')
 
    // New
-   import { createStorage } from '@karkinos/clawvault'
-   const clawvault = require('@karkinos/clawvault')
+   import { createStorage } from '@khaentertainment/clawvault'
+   const clawvault = require('@khaentertainment/clawvault')
    ```
 
 3. Update keyring account identifiers if you're using custom service identifiers:
    ```bash
-   # Examples in documentation now reference @karkinos/clawvault
-   # e.g., acct="@karkinos/clawvault" instead of acct="clawvault"
+   # Examples in documentation now reference @khaentertainment/clawvault
+   # e.g., acct="@khaentertainment/clawvault" instead of acct="clawvault"
    ```
 
 **Other Changes:**
 - Web UI: Friendly inline messaging for rate limit (429) responses
 - Documentation updates and examples consistency improvements
+- Environment variable `CLAWVAULT_STORAGE` now supports overriding the storage backend (supported values: `deterministic`, `keyring`, or `fallback`)
 
 ### 1.0.0 (2024-01-15)
 
