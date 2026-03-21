@@ -5,6 +5,58 @@ import { PlatformInfo } from './interfaces.js'
 const execFileAsync = promisify(execFile)
 
 /**
+ * Get storage provider override from environment variable.
+ *
+ * Priority: CLAWVAULT_STORAGE environment variable > auto-detection.
+ *
+ * @returns Provider type string or null
+ */
+function getStorageOverride(): string | null {
+  const envOverride = process.env.CLAWVAULT_STORAGE
+
+  const validProviders = ['keyring', 'keychain', 'credential', 'systemd', 'fallback']
+  if (envOverride && validProviders.includes(envOverride)) {
+    return envOverride
+  }
+
+  return null
+}
+
+/**
+ * Map storage type string to provider info.
+ * Returns null for auto-detection (no override).
+ *
+ * IMPORTANT: Only returns provider info if:
+ * - The override is 'fallback' (allowed on any OS), OR
+ * - The provider's platform matches the runtime platform
+ */
+function getProviderInfo(
+  override: string | null,
+  platform: NodeJS.Platform
+): PlatformInfo | null {
+  // If override is specified, validate it matches the current platform
+  if (override) {
+    const providerMap: Record<string, { platform: NodeJS.Platform; hasKeyring: boolean; provider: 'linux' | 'systemd' | 'macos' | 'windows' | 'fallback' }> = {
+      keyring: { platform: 'linux', hasKeyring: true, provider: 'linux' },
+      keychain: { platform: 'darwin', hasKeyring: true, provider: 'macos' },
+      credential: { platform: 'win32', hasKeyring: true, provider: 'windows' },
+      systemd: { platform: 'linux', hasKeyring: true, provider: 'systemd' },
+      fallback: { platform: platform, hasKeyring: false, provider: 'fallback' },
+    }
+    
+    const info = providerMap[override]
+    // Only return the provider info if it matches the current platform
+    if (info && info.platform === platform) {
+      return info
+    }
+    
+    return null
+  }
+
+  return null
+}
+
+/**
  * Detect the current platform and available keyring provider.
  *
  * IMPORTANT: On Linux, "secret-tool" may exist but still be unusable in headless
@@ -13,6 +65,13 @@ const execFileAsync = promisify(execFile)
  */
 export async function detectPlatform(): Promise<PlatformInfo> {
   const platform = process.platform
+  const storageOverride = getStorageOverride()
+
+  // Check for platform-specific override first
+  const providerInfo = getProviderInfo(storageOverride, platform)
+  if (providerInfo) {
+    return providerInfo
+  }
 
   if (platform === 'linux') {
     const hasSecretTool = await commandExists('secret-tool')
@@ -21,7 +80,6 @@ export async function detectPlatform(): Promise<PlatformInfo> {
       if (usable) return { platform, hasKeyring: true, provider: 'linux' }
     }
 
-    // Headless/system-service Linux: prefer systemd credentials if available.
     const hasSystemdCreds = await commandExists('systemd-creds')
     if (hasSystemdCreds) return { platform, hasKeyring: true, provider: 'systemd' }
 
@@ -30,6 +88,7 @@ export async function detectPlatform(): Promise<PlatformInfo> {
 
   if (platform === 'darwin') {
     const hasSecurity = await commandExists('security')
+    
     return {
       platform,
       hasKeyring: hasSecurity,
@@ -38,8 +97,8 @@ export async function detectPlatform(): Promise<PlatformInfo> {
   }
 
   if (platform === 'win32') {
-    // "where" is a built-in on Windows; execute via cmd.exe.
     const hasCmdKey = await commandExistsWindows('cmdkey')
+    
     return {
       platform,
       hasKeyring: hasCmdKey,

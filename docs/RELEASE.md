@@ -56,7 +56,7 @@ ClawVault 1.0.0 is the initial stable release of the secure secret management sy
 ### Installation
 
 ```bash
-npm install -g clawvault
+npm install -g @khaentertainment/clawvault
 ```
 
 ### Quick Start

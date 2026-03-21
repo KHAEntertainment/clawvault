@@ -6,7 +6,7 @@ It stores secrets in the platform credential store and implements the OpenClaw e
 
 ## Quick Start
 
-Add the secret you want OpenClaw to resolve:
+Add a secret you want OpenClaw to resolve:
 
 ```bash
 clawvault add providers/openai/apiKey
@@ -33,8 +33,35 @@ Then run the full operator flow:
 ```bash
 clawvault add providers/openai/apiKey
 openclaw secrets configure
-openclaw secrets apply
 openclaw secrets reload
+```
+
+## NPM Package
+
+Install via npm (recommended for consistent version management):
+
+```bash
+npm install -g @khaentertainment/clawvault
+# or
+npm install @khaentertainment/clawvault  # Install locally without -g flag
+```
+
+Install from source (development):
+
+```bash
+# Clone repository
+git clone https://github.com/KHAEntertainment/clawvault.git
+cd clawvault
+
+# Install dependencies and build
+npm install
+npm run build
+
+# Run from local build
+node dist/cli/index.js
+
+# Or symlink for development
+npm link
 ```
 
 ## Secret Submission via Secure Link
@@ -61,7 +88,7 @@ See full details: [docs/SECRET-REQUESTS.md](docs/SECRET-REQUESTS.md)
 
 ## OpenClaw Migrate
 
-Deprecated: `clawvault openclaw migrate` remains available as a scanner and migration helper for older plaintext OpenClaw setups, but ClawVault's primary role is now the exec-provider backend.
+Deprecated: `clawvault openclaw migrate` remains available as a scanner and migration helper for older plaintext OpenClaw setups, but ClawVault's primary role is now an exec-provider backend.
 
 Scan OpenClaw's `auth-profiles.json` and `openclaw.json` and migrate plaintext credentials to encrypted storage. OAuth credential migration remains incomplete.
 

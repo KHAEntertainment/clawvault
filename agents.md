@@ -20,6 +20,60 @@ npm test -- --watch     # Watch mode for tests
 npm run lint            # Linting
 npm run audit:security  # npm audit at high severity
 ```
+clawvault/
+├── src/
+│   ├── cli/         # Commander/Inquirer CLI
+│   ├── config/      # Configuration schemas and loader
+│   ├── gateway/     # Environment injection + service management
+│   ├── openclaw/    # OpenClaw migration utilities
+│   ├── storage/     # Platform keyring providers + implementations
+│   ├── types/       # Shared TypeScript types
+│   └── web/         # Express Web UI
+├── test/
+│   ├── unit/        # Unit tests (mirror src structure)
+│   ├── integration/ # Integration tests
+│   └── security/    # CRITICAL: Context leak prevention tests
+└── docs/            # Documentation
+```
+
+---
+
+## Additional Documentation
+
+- `docs/SECURITY.md` - Full threat model and security controls
+- `docs/ARCHITECTURE.md` - System design and data flow
+- `docs/CLI.md` - Complete CLI reference
+
+---
+
+## NPM Package Instructions
+
+When releasing a new version of ClawVault, agents must:
+
+1. Update the version number in package.json
+2. Run full build and test suite:
+   ```bash
+   npm install
+   npm run build
+   npm test
+   ```
+3. Create a git tag for the release:
+   ```bash
+   git tag v0.2.1  # Example for next version
+   ```
+4. Push the tag to trigger GitHub Actions workflow:
+   ```bash
+   git push origin v0.2.1
+   ```
+5. Verify the package was published successfully at:
+   ```
+   https://www.npmjs.com/package/@khaentertainment/clawvault
+   ```
+6. Update AGENTS.md and CLAUDE.md with any relevant version-specific notes
+
+**Note**: The GitHub Actions workflow `.github/workflows/npm-publish.yml` handles automatic publishing when version tags are pushed. Ensure the `NPM_TOKEN` secret is configured in the repository settings.
+
+---
 
 ### Pre-Commit Checklist
 

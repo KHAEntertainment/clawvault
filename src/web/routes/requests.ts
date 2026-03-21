@@ -10,7 +10,8 @@ interface CreateRequestBody {
   label?: string
 }
 
-const NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/
+// Matches the storage backend's safeNamePattern: lowercase-first with optional /-separated path segments
+const NAME_PATTERN = /^[a-z][a-zA-Z0-9_-]*(\/[a-zA-Z0-9_-]+)*$/
 
 const BUILD_VERSION = '0.2.0'
 
