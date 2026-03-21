@@ -9,14 +9,7 @@
 
 import * as express from 'express'
 import { type StorageProvider } from '../../storage/index.js'
-
-/**
- * Error response helper function for consistent error formatting.
- * Must match the one in index.ts to ensure API consistency.
- */
-function errorResponse(res: express.Response, status: number, message: string): void {
-  res.status(status).json({ success: false, message })
-}
+import { errorResponse } from '../utils.js'
 
 type Request = express.Request
 type Response = express.Response
