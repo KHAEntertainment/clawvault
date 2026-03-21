@@ -1,8 +1,8 @@
 {
-  "name": "@karkinos/clawvault",
+  "name": "@khaentertainment/clawvault",
   "version": "0.2.0",
   "type": "module",
-  "description": "Secure secret management for Karkinos - combines Confidant UX with Secret Manager security",
+  "description": "Secure secret management for OpenClaw - combines Confidant UX with Secret Manager security",
   "main": "dist/index.js",
   "bin": {
     "clawvault": "./dist/cli/index.js"
@@ -16,13 +16,13 @@
     "start": "node dist/cli.js"
   },
   "keywords": [
-    "karkinos",
+    "openclaw",
     "secrets",
     "security",
     "keyring",
     "vault"
   ],
-  "author": "Billy <billy@karkinos.io>",
+  "author": "Billy <billy@openclaw.dev>",
   "license": "MIT",
   "dependencies": {
     "chalk": "^5.3.0",
