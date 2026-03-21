@@ -51,8 +51,8 @@ export async function submitSecret(
     return
   }
 
-  // Validate secret name format (alphanumeric, underscores, slashes, lowercase start)
-  const namePattern = /^[a-z][a-zA-Z0-9_-]*(\/[a-zA-Z0-9_-]+)*$/
+  // Validate secret name format (alphanumeric, underscores, slashes, uppercase start)
+  const namePattern = /^[A-Z][a-zA-Z0-9_-]*(\/[a-zA-Z0-9_-]+)*$/
   if (!namePattern.test(secretName)) {
     errorResponse(res, 400, 'Invalid secret name format. Must start with uppercase letter and contain only alphanumeric characters and underscores.')
     return
