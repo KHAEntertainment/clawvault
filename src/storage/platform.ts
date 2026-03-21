@@ -5,24 +5,17 @@ import { PlatformInfo } from './interfaces.js'
 const execFileAsync = promisify(execFile)
 
 /**
- * Get storage provider override from environment variable or CLI flags.
- * Priority: CLI flag > environment variable > auto-detection.
+ * Get storage provider override from environment variable.
+ * Priority: CLAWVAULT_STORAGE environment variable > auto-detection.
  *
- * @returns Provider type ('linux' | 'keychain' | 'credential' | 'systemd' | 'fallback') or null
+ * @returns Provider type string or null
  */
 function getStorageOverride(): string | null {
-  // 1. Check CLI flags first (highest priority)
-  // CLI flags would be checked in command files when they use storage
-  // For now, check environment variable as the primary override mechanism
-  
   const envOverride = process.env.CLAWVAULT_STORAGE
-  if (envOverride) {
-    const validProviders = ['keyring', 'keychain', 'credential', 'systemd', 'fallback']
-    if (validProviders.includes(envOverride)) {
-      return envOverride
-    }
+  const validProviders = ['keyring', 'keychain', 'credential', 'systemd', 'fallback']
+  if (envOverride && validProviders.includes(envOverride)) {
+    return envOverride
   }
-  
   return null
 }
 
@@ -33,155 +26,49 @@ function getStorageOverride(): string | null {
  * environments (no D-Bus session bus). In that case we should fall back to the
  * encrypted-file provider rather than hard-fail at runtime.
  */
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import { PlatformInfo } from './interfaces.js'
-
-const execFileAsync = promisify(execFile)
-
-/**
- * Get storage provider override from environment variable.
- *
- * Priority: CLAWVAULT_STORAGE environment variable > auto-detection.
- *
- * @returns Provider type string or null
- */
-function getStorageOverride(): string | null {
-  const envOverride = process.env.CLAWVAULT_STORAGE
-  
-  const validProviders = ['keyring', 'keychain', 'credential', 'systemd', 'fallback']
-  if (envOverride && validProviders.includes(envOverride)) {
-    return envOverride
-  }
-  
-  return null
-}
-
-/**
- * Map storage type string to provider info.
- * Returns null for auto-detection (no override).
- */
-function getProviderInfo(
-  override: string | null,
-  platform: NodeJS.Platform
-): PlatformInfo | null {
-  // If override is specified, return matching platform info
-  if (override) {
-    const providerMap: Record<string, { platform: NodeJS.Platform; hasKeyring: boolean; provider: 'linux' | 'systemd' | 'macos' | 'windows' | 'fallback' }> = {
-      keyring: { platform: 'linux', hasKeyring: true, provider: 'linux' },
-      keychain: { platform: 'darwin', hasKeyring: true, provider: 'macos' },
-      credential: { platform: 'win32', hasKeyring: true, provider: 'windows' },
-      systemd: { platform: 'linux', hasKeyring: true, provider: 'systemd' },
-      fallback: { platform: 'linux', hasKeyring: false, provider: 'fallback' },
-    }
-    
-    return providerMap[override] || null
-  }
-  
-  return null
-}
-
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import { PlatformInfo } from './interfaces.js'
-
-const execFileAsync = promisify(execFile)
-
-/**
- * Get storage provider override from environment variable.
- *
- * Priority: CLAWVAULT_STORAGE environment variable > auto-detection.
- *
- * @returns Provider type string or null
- */
-function getStorageOverride(): string | null {
-  const envOverride = process.env.CLAWVAULT_STORAGE
-  
-  const validProviders = ['keyring', 'keychain', 'credential', 'systemd', 'fallback']
-  if (envOverride && validProviders.includes(envOverride)) {
-    return envOverride
-  }
-  
-  return null
-}
+export async function detectPlatform(): Promise<PlatformInfo> {
+  const storageOverride = getStorageOverride()
+  const platform = process.platform
 
   if (platform === 'linux') {
+    if (storageOverride) {
+      const providerMap: Record<string, 'linux' | 'systemd' | 'fallback'> = {
+        keyring: 'linux',
+        systemd: 'systemd',
+        fallback: 'fallback',
+      }
+      const provider = providerMap[storageOverride] || 'linux'
+      return { platform, hasKeyring: true, provider }
+    }
+
     const hasSecretTool = await commandExists('secret-tool')
     if (hasSecretTool) {
       const usable = await linuxSecretToolUsable()
       if (usable) return { platform, hasKeyring: true, provider: 'linux' }
     }
-    
-    const hasSystemdCreds = await commandExists('systemd-creds')
-    if (hasSystemdCreds) return { platform, hasKeyring: true, provider: 'systemd' }
-    
-    return { platform, hasKeyring: false, provider: 'fallback' }
-  }
 
-  if (platform === 'darwin') {
-    const hasSecurity = await commandExists('security')
-    
-    const providerInfo = getProviderInfo(storageOverride, platform)
-    if (providerInfo) {
-      return providerInfo
-    }
-    
-    return {
-      platform,
-      hasKeyring: hasSecurity,
-      provider: hasSecurity ? 'macos' : 'fallback',
-    }
-  }
-
-  if (platform === 'win32') {
-    const hasCmdKey = await commandExistsWindows('cmdkey')
-    
-    const providerInfo = getProviderInfo(storageOverride, platform)
-    if (providerInfo) {
-      return providerInfo
-    }
-    
-    return {
-      platform,
-      hasKeyring: hasCmdKey,
-      provider: hasCmdKey ? 'windows' : 'fallback',
-    }
-  }
-
-  return { platform, hasKeyring: false, provider: 'fallback' }
-}
-      
-      const provider = providerMap[storageOverride] || 'linux'
-      return { platform, hasKeyring: true, provider }
-    }
-    
-    const usable = await linuxSecretToolUsable()
-    if (usable) return { platform, hasKeyring: true, provider: 'linux' }
-    
     // Headless/system-service Linux: prefer systemd credentials if available.
     const hasSystemdCreds = await commandExists('systemd-creds')
     if (hasSystemdCreds) return { platform, hasKeyring: true, provider: 'systemd' }
-    
+
     return { platform, hasKeyring: false, provider: 'fallback' }
   }
 
   if (platform === 'darwin') {
     const hasSecurity = await commandExists('security')
-    
-    // Check if override forces specific provider
+
     if (storageOverride) {
-      const providerMap: Record<string, 'keychain'> = {
+      const providerMap: Record<string, 'macos' | 'fallback'> = {
         keyring: 'macos',
-        keychain: 'macos', // Force keychain
-        credential: 'macos', // Force credential on macOS
+        keychain: 'macos',
+        credential: 'macos',
         systemd: 'macos',
-        fallback: 'macos',
+        fallback: 'fallback',
       }
-      
       const provider = providerMap[storageOverride] || 'macos'
       return { platform, hasKeyring: hasSecurity, provider }
     }
-    
+
     return {
       platform,
       hasKeyring: hasSecurity,
@@ -192,21 +79,19 @@ function getStorageOverride(): string | null {
   if (platform === 'win32') {
     // "where" is a built-in on Windows; execute via cmd.exe.
     const hasCmdKey = await commandExistsWindows('cmdkey')
-    
-    // Check if override forces specific provider
+
     if (storageOverride) {
-      const providerMap: Record<string, 'credential'> = {
+      const providerMap: Record<string, 'windows' | 'fallback'> = {
         keyring: 'windows',
         keychain: 'windows',
-        credential: 'windows', // Force credential
+        credential: 'windows',
         systemd: 'windows',
-        fallback: 'windows',
+        fallback: 'fallback',
       }
-      
       const provider = providerMap[storageOverride] || 'windows'
       return { platform, hasKeyring: hasCmdKey, provider }
     }
-    
+
     return {
       platform,
       hasKeyring: hasCmdKey,

@@ -10,8 +10,7 @@
 
 import { type Request, type Response } from 'express'
 import { type StorageProvider } from '../../storage/index.js'
-
-// Trigger code review
+import { type AuditEvent } from '../../storage/audit.js'
 
 interface SecretMetadata {
   name: string
@@ -38,7 +37,7 @@ interface ManageContext {
   storage: StorageProvider
   config: ConfigSchema
   csrfToken: string
-  emit: (event: any) => void
+  emit: (event: AuditEvent) => void
 }
 
 /**
@@ -193,7 +192,7 @@ function htmlManagePage(
             <td class="actions-cell">
               <button
                 data-secret="${escapeHtml(secret.name)}"
-                onclick="toggleExpandForm(this)"
+                class="toggle-expand-btn"
               >
                 Update
               </button>
@@ -218,34 +217,12 @@ function htmlManagePage(
           </label>
           <input type="password" name="secretValue" required autocomplete="off" autofocus />
           <button type="submit">Save</button>
-          <button type="button" onclick="hideAllExpandForms()">Cancel</button>
+          <button type="button" class="cancel-expand-btn">Cancel</button>
         </form>
       </div>
     `).join('')}
     
-    <script>
-      function toggleExpandForm(btn) {
-        const formId = 'update-form-' + btn.getAttribute('data-secret')
-        const forms = document.querySelectorAll('.expand-form')
-        forms.forEach(form => {
-          if (form.id !== formId) {
-            form.style.display = 'none'
-          }
-        })
-        
-        const targetForm = document.getElementById(formId)
-        if (targetForm) {
-          targetForm.style.display = 'block'
-        }
-      }
-      
-      function hideAllExpandForms() {
-        const forms = document.querySelectorAll('.expand-form')
-        forms.forEach(form => {
-          form.style.display = 'none'
-        })
-      }
-    </script>
+    <script src="/static/manage.js"></script>
   </body>
 </html>`
 }
@@ -254,7 +231,7 @@ function htmlManagePage(
  * GET /manage - List all secrets with metadata only.
  */
 export async function manageList(
-  _req: Request,
+  req: Request,
   res: Response,
   context: ManageContext
 ): Promise<void> {
@@ -275,10 +252,15 @@ export async function manageList(
     
     context.emit({ timestamp: new Date().toISOString(), operation: 'list', source: 'manage-dashboard', success: true })
     
+    const updatedSecret = typeof req.query.updated === 'string' && /^[A-Z][A-Z0-9_]*$/.test(req.query.updated)
+      ? req.query.updated
+      : undefined
+
     res.status(200).type('html').send(htmlManagePage(
       'Secret Management Dashboard',
       secrets,
-      context.csrfToken
+      context.csrfToken,
+      updatedSecret
     ))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
@@ -303,15 +285,37 @@ export async function manageUpdate(
   context: ManageContext
 ): Promise<void> {
   const name = req.params.name
+
+  /**
+   * Re-list secrets for error pages so the user retains context.
+   */
+  async function secretsForErrorPage(): Promise<SecretMetadata[]> {
+    try {
+      const names = await context.storage.list()
+      return names.map(n => {
+        const cfg = context.config.secrets?.[n]
+        return {
+          name: n,
+          description: cfg?.description || null,
+          provider: cfg?.provider || null,
+          required: cfg?.required || false,
+          rotationEnabled: cfg?.rotation?.enabled || false
+        }
+      })
+    } catch {
+      return []
+    }
+  }
   
   try {
     // Validate secret name format
     const namePattern = /^[A-Z][A-Z0-9_]*$/
     if (!namePattern.test(name)) {
       context.emit({ timestamp: new Date().toISOString(), operation: 'set', secretName: name, source: 'manage-dashboard', success: false, errorMessage: 'Invalid secret name format' })
+      const secrets = await secretsForErrorPage()
       res.status(400).type('html').send(htmlManagePage(
         'Secret Management Dashboard',
-        [],
+        secrets,
         context.csrfToken,
         undefined,
         'Invalid secret name format. Must start with uppercase letter and contain only alphanumeric characters and underscores.'
@@ -323,9 +327,10 @@ export async function manageUpdate(
     const csrfTokenFromBody = req.body._csrf
     if (csrfTokenFromBody !== context.csrfToken) {
       context.emit({ timestamp: new Date().toISOString(), operation: 'set', secretName: name, source: 'manage-dashboard', success: false, errorMessage: 'Invalid CSRF token' })
+      const secrets = await secretsForErrorPage()
       res.status(403).type('html').send(htmlManagePage(
         'Secret Management Dashboard',
-        [],
+        secrets,
         context.csrfToken,
         undefined,
         'Invalid CSRF token. Please refresh the page.'
@@ -336,9 +341,10 @@ export async function manageUpdate(
     // Validate secret value is not empty
     if (typeof req.body.secretValue !== 'string' || req.body.secretValue.length === 0) {
       context.emit({ timestamp: new Date().toISOString(), operation: 'set', secretName: name, source: 'manage-dashboard', success: false, errorMessage: 'Secret value cannot be empty' })
+      const secrets = await secretsForErrorPage()
       res.status(400).type('html').send(htmlManagePage(
         'Secret Management Dashboard',
-        [],
+        secrets,
         context.csrfToken,
         undefined,
         'Secret value cannot be empty.'
@@ -357,9 +363,10 @@ export async function manageUpdate(
     const message = error instanceof Error ? error.message : 'Unknown error'
     context.emit({ timestamp: new Date().toISOString(), operation: 'set', secretName: name, source: 'manage-dashboard', success: false, errorMessage: message })
     
+    const secrets = await secretsForErrorPage()
     res.status(500).type('html').send(htmlManagePage(
       'Secret Management Dashboard',
-      [],
+      secrets,
       context.csrfToken,
       undefined,
       message

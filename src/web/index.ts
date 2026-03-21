@@ -19,6 +19,7 @@ import { SecretRequestStore } from './requests/store.js'
 import { decideInsecureHttpPolicy, isLocalhostBinding } from './network-policy.js'
 import { CLAWVAULT_LOGO_JPG_BASE64 } from './assets/logo-jpg-base64.js'
 import type { AuditEvent } from '../storage/audit.js'
+import { loadConfig } from '../config/index.js'
 
 export interface WebServerOptions {
   port: number
@@ -47,7 +48,8 @@ export async function createServer(
   const requestStore = options.requestStore
   const app = express()
 
-  // Generate CSRF token for manage dashboard
+  // Generate CSRF token for manage dashboard (server-side token stored in memory,
+  // validated against hidden form field on POST)
   const csrfToken = randomBytes(16).toString('hex')
 
   // --- Helmet: comprehensive security headers ---
@@ -103,17 +105,19 @@ export async function createServer(
     next()
   }
 
-  // --- Audit event emitter ---
-  const emitAudit = (event: AuditEvent): void => {
-    try {
-      process.stderr.write(JSON.stringify(event) + '\n')
-    } catch {
-      // Never let audit logging crash the process
-    }
+  // Load config for manage dashboard (secret metadata lookup).
+  // Falls back to empty config if the config file is missing or invalid.
+  let manageConfig: { secrets: Record<string, any> } = { secrets: {} }
+  try {
+    const loaded = await loadConfig()
+    manageConfig = loaded
+  } catch {
+    // If config loading fails, fall back to empty config so the server still starts.
   }
 
-  // Mock config for manage dashboard (metadata lookup)
-  const mockConfig = { secrets: {} as Record<string, any> }
+  // Audit is handled by AuditedStorageProvider wrapping storage in serve.ts;
+  // using a noop here avoids double-logging for manage dashboard operations.
+  const noopAuditEmit = (_event: AuditEvent): void => {}
 
   // --- Health check (no auth required) ---
   app.get('/health', (_req: Request, res: Response) => {
@@ -207,6 +211,38 @@ export async function createServer(
     res.type('image/jpeg').send(buf)
   })
 
+  // Manage dashboard JS (served as static asset to comply with CSP script-src 'self')
+  app.get('/static/manage.js', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store')
+    res.type('application/javascript').send(`// ClawVault manage dashboard UX helpers
+(() => {
+  function hideAllExpandForms() {
+    document.querySelectorAll('.expand-form').forEach(function(form) {
+      form.style.display = 'none';
+    });
+  }
+
+  window.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.toggle-expand-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var secret = btn.getAttribute('data-secret');
+        var formId = 'update-form-' + secret;
+        document.querySelectorAll('.expand-form').forEach(function(form) {
+          if (form.id !== formId) form.style.display = 'none';
+        });
+        var targetForm = document.getElementById(formId);
+        if (targetForm) targetForm.style.display = 'block';
+      });
+    });
+
+    document.querySelectorAll('.cancel-expand-btn').forEach(function(btn) {
+      btn.addEventListener('click', hideAllExpandForms);
+    });
+  });
+})();
+`)
+  })
+
   // --- API routes (auth required) ---
   app.post('/api/submit', authMiddleware, submitLimiter, (req: Request, res: Response) => submitSecret(req, res, storage))
   app.get('/api/status', authMiddleware, (req: Request, res: Response) => statusRoute(req, res, storage))
@@ -214,9 +250,9 @@ export async function createServer(
 
   // --- Manage dashboard routes (auth required) ---
   app.get('/manage', authMiddleware, manageLimiter, (req: Request, res: Response) => 
-    manageList(req, res, { storage, config: mockConfig, csrfToken, emit: emitAudit }))
+    manageList(req, res, { storage, config: manageConfig, csrfToken, emit: noopAuditEmit }))
   app.post('/manage/:name/update', authMiddleware, manageLimiter, express.urlencoded({ extended: true }), (req: Request, res: Response) => 
-    manageUpdate(req, res, { storage, config: mockConfig, csrfToken, emit: emitAudit }))
+    manageUpdate(req, res, { storage, config: manageConfig, csrfToken, emit: noopAuditEmit }))
 
   // --- HTML forms ---
   app.get('/', (_req: Request, res: Response) => {
