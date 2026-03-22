@@ -104,8 +104,8 @@ export interface PlanAnalysis {
  * Must match pattern: ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$
  */
 export function buildExecProviderId(provider: string, field: string): string {
-  const sanitizedProvider = provider.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-  const sanitizedField = field.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const sanitizedProvider = provider.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+  const sanitizedField = field.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unnamed'
   return `providers/${sanitizedProvider}/${sanitizedField}`
 }
 

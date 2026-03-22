@@ -142,7 +142,7 @@ export async function analyzeAuthStoreRedundancies(
   const agentsWithProfiles = new Set(allProfiles.filter(p => p.hasKey).map(p => p.agentId))
   const agentsWithSharedOnly = new Set<string>()
 
-  for (const [agentId] of Object.entries([...agentsWithProfiles])) {
+  for (const agentId of agentsWithProfiles) {
     const agentProfiles = allProfiles.filter(p => p.agentId === agentId && p.hasKey)
     if (agentProfiles.length === 0) continue
 
@@ -202,6 +202,16 @@ export const cleanupCommand = new Command('cleanup')
   .option('--verbose', 'Print detailed information')
   .action(async (options: CleanupOptions) => {
     try {
+      if (options.apply) {
+        console.log(chalk.yellow('Warning: --apply is not yet implemented'))
+        console.log(chalk.gray('To consolidate auth configurations:'))
+        console.log(chalk.gray('  1. Generate a migration plan: clawvault openclaw migrate --plan'))
+        console.log(chalk.gray('  2. Apply via OpenClaw: openclaw secrets apply --from clawvault-migration-plan.json'))
+        console.log(chalk.gray('  3. Remove redundant auth-profiles.json files from agents that inherit from main'))
+        console.log(chalk.gray('  4. Restart the gateway: openclaw gateway restart'))
+        return
+      }
+
       const report = await analyzeAuthStoreRedundancies({
         openclawDir: options.openclawDir,
         agentId: options.agentId,
