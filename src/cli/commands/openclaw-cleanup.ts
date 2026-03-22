@@ -127,12 +127,13 @@ export async function analyzeAuthStoreRedundancies(
 
   const sharedProfiles: RedundancyReport['sharedProfiles'] = []
   for (const [fingerprint, profiles] of fingerprintGroups) {
-    if (profiles.length > 1) {
+    const agentIds = new Set(profiles.map(p => p.agentId))
+    if (agentIds.size > 1) {
       const provider = profiles[0].provider
       sharedProfiles.push({
         fingerprint,
-        count: profiles.length,
-        agents: profiles.map(p => p.agentId),
+        count: agentIds.size,
+        agents: Array.from(agentIds),
         provider,
       })
     }
@@ -149,7 +150,9 @@ export async function analyzeAuthStoreRedundancies(
     const allFingerprints = agentProfiles.map(p => p.fingerprint)
     const sharedCount = allFingerprints.filter(fp => {
       const group = fingerprintGroups.get(fp)
-      return group && group.length > 1
+      if (!group) return false
+      const agentIds = new Set(group.map(p => p.agentId))
+      return agentIds.size > 1
     }).length
 
     // If ALL of an agent's profiles are shared with others, it's a candidate for cleanup
@@ -158,29 +161,33 @@ export async function analyzeAuthStoreRedundancies(
     }
   }
 
-  // Find global provider candidates (same provider used by all agents)
-  const providerAgents = new Map<string, Set<string>>()
-  const providerProfileIds = new Map<string, string[]>()
+  // Find global provider candidates (same provider+fingerprint used by all agents)
+  const providerFingerprintAgents = new Map<string, Set<string>>()
+  const providerFingerprintProfileIds = new Map<string, string[]>()
+  const providerFingerprintProvider = new Map<string, string>()
 
   for (const profile of allProfiles.filter(p => p.hasKey)) {
-    const agents = providerAgents.get(profile.provider) || new Set()
+    const key = `${profile.provider}|${profile.fingerprint}`
+    const agents = providerFingerprintAgents.get(key) || new Set()
     agents.add(profile.agentId)
-    providerAgents.set(profile.provider, agents)
+    providerFingerprintAgents.set(key, agents)
 
-    const profileIds = providerProfileIds.get(profile.provider) || []
+    const profileIds = providerFingerprintProfileIds.get(key) || []
     profileIds.push(profile.profileId)
-    providerProfileIds.set(profile.provider, profileIds)
+    providerFingerprintProfileIds.set(key, profileIds)
+
+    providerFingerprintProvider.set(key, profile.provider)
   }
 
   const allAgentIds = [...agentsWithProfiles]
   const globalProviderCandidates: RedundancyReport['globalProviderCandidates'] = []
 
-  for (const [provider, agents] of providerAgents) {
+  for (const [key, agents] of providerFingerprintAgents) {
     if (agents.size === allAgentIds.length && allAgentIds.length > 1) {
       globalProviderCandidates.push({
-        provider,
+        provider: providerFingerprintProvider.get(key)!,
         agents: [...agents],
-        profileIds: [...new Set(providerProfileIds.get(provider) || [])],
+        profileIds: [...new Set(providerFingerprintProfileIds.get(key) || [])],
       })
     }
   }

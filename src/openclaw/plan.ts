@@ -104,8 +104,8 @@ export interface PlanAnalysis {
  * Must match pattern: ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$
  */
 export function buildExecProviderId(provider: string, field: string): string {
-  const sanitizedProvider = provider.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
-  const sanitizedField = field.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unnamed'
+  const sanitizedProvider = provider.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '') || 'unknown'
+  const sanitizedField = field.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '') || 'unnamed'
   return `providers/${sanitizedProvider}/${sanitizedField}`
 }
 
@@ -148,7 +148,7 @@ export function createSecretsApplyPlan(
   const targets: SecretsApplyTarget[] = analysis.migratable.map(secret => ({
     type: secret.field === 'key' ? 'auth-profiles.api_key.key' : 'auth-profiles.token.token',
     path: buildAuthProfilePath(secret.profileId, secret.field),
-    pathSegments: buildAuthProfilePath(secret.profileId, secret.field).split('.'),
+    pathSegments: ['profiles', secret.profileId, secret.field],
     agentId: secret.agentId,
     ref: {
       source: 'exec',
