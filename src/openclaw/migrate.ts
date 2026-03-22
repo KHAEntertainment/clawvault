@@ -2,6 +2,13 @@ import { promises as fs } from 'fs'
 import { homedir } from 'os'
 import { join, dirname, basename } from 'path'
 import { createStorage, type StorageProvider } from '../storage/index.js'
+import {
+  buildExecProviderId,
+  type MigratableSecret,
+  type NonMigratableSecret,
+  type PlanAnalysis,
+  NON_MIGRATABLE_CREDENTIAL_TYPES,
+} from './plan.js'
 
 const AUTH_PROFILE_FILENAME = 'auth-profiles.json'
 
@@ -380,4 +387,221 @@ export async function migrateAllOpenClawAuthStores(
     )
   }
   return reports
+}
+
+/**
+ * Analyze a single auth store file for secrets that can be migrated via exec provider plan.
+ * Returns migratable and non-migratable secrets without modifying anything.
+ */
+export async function analyzeAuthStoreForPlan(
+  agentId: string,
+  authStorePath: string
+): Promise<{
+  migratable: MigratableSecret[]
+  nonMigratable: NonMigratableSecret[]
+}> {
+  const root = await readJsonFile(authStorePath)
+  if (typeof root !== 'object' || root === null) {
+    throw new Error(`Invalid auth store JSON (not an object): ${authStorePath}`)
+  }
+
+  const store = root as Record<string, unknown>
+  const profilesUnknown = store.profiles
+  if (typeof profilesUnknown !== 'object' || profilesUnknown === null || Array.isArray(profilesUnknown)) {
+    throw new Error(`Invalid auth store JSON (missing profiles): ${authStorePath}`)
+  }
+
+  const profiles = profilesUnknown as Record<string, unknown>
+  const migratable: MigratableSecret[] = []
+  const nonMigratable: NonMigratableSecret[] = []
+
+  for (const [profileId, credentialUnknown] of Object.entries(profiles)) {
+    if (typeof credentialUnknown !== 'object' || credentialUnknown === null || Array.isArray(credentialUnknown)) {
+      nonMigratable.push({
+        agentId,
+        authStorePath,
+        profileId,
+        provider: 'unknown',
+        field: 'credential',
+        reason: 'missing_value',
+      })
+      continue
+    }
+
+    const credential = credentialUnknown as Record<string, unknown>
+    const type = credential.type as string | undefined
+    const provider = safeProvider(credential, profileId)
+
+    // Check if it's a type we know can't be migrated
+    if (NON_MIGRATABLE_CREDENTIAL_TYPES.includes(type as 'oauth')) {
+      nonMigratable.push({
+        agentId,
+        authStorePath,
+        profileId,
+        provider,
+        field: 'credential',
+        reason: 'oauth_not_supported',
+      })
+      continue
+    }
+
+    // Handle api_key credentials
+    if (type === 'api_key') {
+      const keyValue = credential.key
+      if (isEnvPlaceholder(keyValue)) {
+        nonMigratable.push({
+          agentId,
+          authStorePath,
+          profileId,
+          provider,
+          field: 'key',
+          reason: 'already_has_ref',
+        })
+        continue
+      }
+      if (typeof keyValue !== 'string') {
+        nonMigratable.push({
+          agentId,
+          authStorePath,
+          profileId,
+          provider,
+          field: 'key',
+          reason: 'missing_value',
+        })
+        continue
+      }
+      if (keyValue.trim() === '') {
+        nonMigratable.push({
+          agentId,
+          authStorePath,
+          profileId,
+          provider,
+          field: 'key',
+          reason: 'empty_value',
+        })
+        continue
+      }
+
+      migratable.push({
+        agentId,
+        authStorePath,
+        profileId,
+        provider,
+        field: 'key',
+        secretId: buildExecProviderId(provider, 'key'),
+        length: keyValue.length,
+      })
+      continue
+    }
+
+    // Handle token credentials
+    if (type === 'token') {
+      const tokenValue = credential.token
+      if (isEnvPlaceholder(tokenValue)) {
+        nonMigratable.push({
+          agentId,
+          authStorePath,
+          profileId,
+          provider,
+          field: 'token',
+          reason: 'already_has_ref',
+        })
+        continue
+      }
+      if (typeof tokenValue !== 'string') {
+        nonMigratable.push({
+          agentId,
+          authStorePath,
+          profileId,
+          provider,
+          field: 'token',
+          reason: 'missing_value',
+        })
+        continue
+      }
+      if (tokenValue.trim() === '') {
+        nonMigratable.push({
+          agentId,
+          authStorePath,
+          profileId,
+          provider,
+          field: 'token',
+          reason: 'empty_value',
+        })
+        continue
+      }
+
+      migratable.push({
+        agentId,
+        authStorePath,
+        profileId,
+        provider,
+        field: 'token',
+        secretId: buildExecProviderId(provider, 'token'),
+        length: tokenValue.length,
+      })
+      continue
+    }
+
+    // Unknown credential type
+    if (type !== undefined) {
+      nonMigratable.push({
+        agentId,
+        authStorePath,
+        profileId,
+        provider,
+        field: 'credential',
+        reason: 'unsupported_credential_type',
+      })
+    } else {
+      nonMigratable.push({
+        agentId,
+        authStorePath,
+        profileId,
+        provider,
+        field: 'credential',
+        reason: 'missing_value',
+      })
+    }
+  }
+
+  return { migratable, nonMigratable }
+}
+
+/**
+ * Analyze all auth stores and generate a SecretsApplyPlan.
+ */
+export async function generateSecretsApplyPlan(
+  options?: DiscoverAuthStoresOptions & {
+    providerName?: string
+    clawvaultPath?: string
+  }
+): Promise<PlanAnalysis> {
+  const paths = await discoverAuthStorePaths(options)
+
+  const allMigratable: MigratableSecret[] = []
+  const allNonMigratable: NonMigratableSecret[] = []
+  const agentsWithMigratable = new Set<string>()
+  const agentsWithNonMigratable = new Set<string>()
+
+  for (const p of paths) {
+    const { migratable, nonMigratable } = await analyzeAuthStoreForPlan(p.agentId, p.authStorePath)
+    allMigratable.push(...migratable)
+    allNonMigratable.push(...nonMigratable)
+
+    if (migratable.length > 0) {
+      agentsWithMigratable.add(p.agentId)
+    }
+    if (nonMigratable.length > 0) {
+      agentsWithNonMigratable.add(p.agentId)
+    }
+  }
+
+  return {
+    migratable: allMigratable,
+    nonMigratable: allNonMigratable,
+    totalAgents: paths.length,
+    agentsWithMigratable: agentsWithMigratable.size,
+    agentsWithNonMigratable: agentsWithNonMigratable.size,
+  }
 }
