@@ -62,7 +62,7 @@ clawvault openclaw migrate --plan --verbose
 This scans all auth stores and generates `clawvault-migration-plan.json`.
 
 Example output:
-```
+```text
 SecretsApplyPlan generated: clawvault-migration-plan.json
 Agents scanned: 3
 
@@ -229,7 +229,7 @@ clawvault openclaw restore /path/to/backup.bak.12345 --yes
 
 When OpenClaw needs a secret, it sends the exec provider ID to ClawVault:
 
-```
+```text
 profileId: "openai:default", field: "key" → Exec ID: "providers/openai/key"
 profileId: "anthropic:default", field: "key" → Exec ID: "providers/anthropic/key"
 ```

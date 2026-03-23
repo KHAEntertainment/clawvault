@@ -214,7 +214,7 @@ export const cleanupCommand = new Command('cleanup')
         console.log(chalk.gray('To consolidate auth configurations:'))
         console.log(chalk.gray('  1. Generate a migration plan: clawvault openclaw migrate --plan'))
         console.log(chalk.gray('  2. Apply via OpenClaw: openclaw secrets apply --from clawvault-migration-plan.json'))
-        console.log(chalk.gray('  3. Remove redundant auth-profiles.json files from agents that inherit from main'))
+        console.log(chalk.gray('  3. Review and remove redundant auth-profiles.json files after confirming agents can access shared secrets'))
         console.log(chalk.gray('  4. Restart the gateway: openclaw gateway restart'))
         return
       }
@@ -242,7 +242,7 @@ export const cleanupCommand = new Command('cleanup')
 
         if (report.agentsWithNoUniqueProfiles.length > 0) {
           console.log(chalk.yellow(`\nAgents with no unique profiles (${report.agentsWithNoUniqueProfiles.length}):`))
-          console.log('  These agents could inherit all auth from the main agent:')
+          console.log('  These agents only have profiles that are duplicated across other scanned agents:')
           for (const agentId of report.agentsWithNoUniqueProfiles) {
             console.log(`    - ${agentId}`)
           }
@@ -283,11 +283,11 @@ export const cleanupCommand = new Command('cleanup')
         }
 
         if (report.agentsWithNoUniqueProfiles.length > 0) {
-          console.log(chalk.yellow('\nAgents that could use main agent auth:'))
+          console.log(chalk.yellow('\nAgents with only duplicated profiles:'))
           for (const agentId of report.agentsWithNoUniqueProfiles) {
             console.log(`  - ${agentId}`)
           }
-          console.log(chalk.gray('    Action: Remove their auth-profiles.json to inherit from main'))
+          console.log(chalk.gray('    Action: Review if these agents still need their own auth-profiles.json'))
         }
 
         if (report.sharedProfiles.length > 0) {
@@ -302,7 +302,7 @@ export const cleanupCommand = new Command('cleanup')
         console.log('To apply this consolidation plan:')
         console.log('  1. Generate a migration plan: clawvault openclaw migrate --plan')
         console.log('  2. Apply via OpenClaw: openclaw secrets apply --from clawvault-migration-plan.json')
-        console.log('  3. Remove redundant auth-profiles.json files from agents that inherit from main')
+        console.log('  3. Review and remove redundant auth-profiles.json files after confirming agents can access shared secrets')
         console.log('  4. Restart the gateway: openclaw gateway restart')
 
         return
