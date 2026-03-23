@@ -1,6 +1,6 @@
 # Migration Guide
 
-Migrate existing OpenClaw credentials from plaintext `auth-profiles.json` files to encrypted ClawVault storage.
+Migrate existing OpenClaw credentials from plaintext `auth-profiles.json` files to encrypted ClawVault storage using the OpenClaw exec provider protocol.
 
 ## Overview
 
@@ -21,247 +21,240 @@ These files may contain **plaintext secrets**:
 }
 ```
 
-**The migration:**
-1. Scans all auth-profiles.json files
-2. Extracts plaintext secrets
-3. Stores them in encrypted keyring (ClawVault)
-4. Replaces values with `${ENV_VAR}` placeholders
-5. Creates backups before any changes
+## Recommended Migration Path: SecretsApplyPlan
 
-**Intended result (not currently supported by OpenClaw):**
-```json
-{
-  "profiles": {
-    "openai:default": {
-      "type": "api_key",
-      "key": "${OPENCLAW_OPENAI_OPENAI_DEFAULT_KEY}"
-    }
-  }
-}
-```
+The recommended approach uses OpenClaw's native `exec` provider protocol via `openclaw secrets apply`. This method:
 
-OpenClaw does not expand `${...}` placeholders in `auth-profiles.json` today. See the critical limitation section below.
+1. Scans all `auth-profiles.json` files for plaintext secrets
+2. Generates a `SecretsApplyPlan` that tells OpenClaw how to resolve secrets via ClawVault
+3. Uses the exec provider protocol - secrets NEVER leave the keyring
+4. OpenClaw fetches secret values at runtime via `clawvault resolve`
+
+### Why not `${ENV_VAR}` placeholders?
+
+OpenClaw does **not** expand `${ENV_VAR}` strings in `auth-profiles.json`. Using placeholders will cause authentication failures. The exec provider approach avoids this limitation entirely.
+
+### What CAN be migrated via plan
+
+| Type | Fields | Notes |
+|------|--------|-------|
+| `api_key` | `key` | Converted to `keyRef` with exec source |
+| `token` | `token` | Converted to `tokenRef` with exec source |
+
+### What CANNOT be migrated via plan
+
+| Type | Reason |
+|------|--------|
+| `oauth` | OAuth tokens are runtime-minted and rotating - they don't support `keyRef`/`tokenRef` |
+
+For OAuth credentials, use OpenClaw's native sync feature after migration.
 
 ---
 
-## ⚠️ Critical Limitation: OpenClaw does *not* expand ${ENV_VAR} in auth-profiles.json
+## Migration Workflow
 
-Today, **OpenClaw treats `${ENV_VAR}` strings in `auth-profiles.json` as literal text** — it does not perform environment-variable substitution when reading credentials.
-
-**What this means:**
-- Running `clawvault openclaw migrate --apply` will rewrite `auth-profiles.json` with `${...}` placeholders.
-- OpenClaw will then try to use those placeholder strings as the actual credential value, and authentication will fail.
-
-**Multi-agent pitfall:** if you have multiple agents, each agent has its own `auth-profiles.json`. A single "apply" migration can break all of them at once.
-
-**OAuth is especially brittle:** even if OpenClaw gains env expansion in the future, OAuth token handling may validate/parse token-looking strings before expansion. Treat OAuth placeholder migration as unsupported.
-
-**Recommendation:** use `clawvault openclaw migrate` as a **discovery/dry-run scanner only** until OpenClaw supports env-var substitution (or ClawVault gains a supported runtime integration path).
-
-## Safe Migration Workflow
-
-### Step 1: Simulate (Dry-Run)
-
-**Always run this first.** Shows what will migrate without making changes.
+### Step 1: Generate Migration Plan
 
 ```bash
-clawvault openclaw migrate --verbose
+clawvault openclaw migrate --plan --verbose
 ```
 
-**[Screenshot Placeholder: Dry-run output showing discovered secrets]**
+This scans all auth stores and generates `clawvault-migration-plan.json`.
 
 Example output:
+```text
+SecretsApplyPlan generated: clawvault-migration-plan.json
+Agents scanned: 3
+
+Secrets that CAN be migrated via exec provider: 4
+  openai:default (main)
+    Provider: openai, Field: key
+    Exec ID: providers/openai/key
+
+Secrets that CANNOT be migrated: 2
+  - 1 OAuth credentials (not supported by exec provider)
+
+Next steps:
+  1. Review the plan: cat clawvault-migration-plan.json
+  2. Dry-run: openclaw secrets apply --from ./clawvault-migration-plan.json --dry-run
+  3. Apply: openclaw secrets apply --from ./clawvault-migration-plan.json
+  4. For OAuth: Use openclaw models auth login --sync-siblings instead
 ```
-OpenClaw migration (dry-run)
-No secrets were written and no files were modified.
-Scanned: 2 auth store files
-Files changed: 2
-Secrets migrated: 8
 
-main
-  openai:default key → OPENCLAW_OPENAI_OPENAI_DEFAULT_KEY (49 chars)
-  kimi-coding:default key → OPENCLAW_KIMI_CODING_KIMI_CODING_DEFAULT_KEY (72 chars)
-
-planner
-  openai:default key → OPENCLAW_OPENAI_OPENAI_DEFAULT_KEY (49 chars)
-  ...
-
-Re-run with --apply to write secrets to the keyring and update auth-profiles.json.
-```
-
-### Step 2: Generate Restore Command
-
-**SAVE THIS COMMAND.** You'll need it if migration fails.
-
-After `--apply`, the actual backup path will be printed. For now, the pattern is:
+### Step 2: Review the Plan
 
 ```bash
-# Save this pattern - you'll get the exact path after migration
-clawvault openclaw restore \
-  "/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json.bak.TIMESTAMP" \
-  --yes
+cat clawvault-migration-plan.json
 ```
 
-**[Screenshot Placeholder: Terminal with restore command highlighted]**
+The plan shows:
+- `targets`: Which secrets will be migrated and their exec provider IDs
+- `providerUpserts`: How to configure the clawvault exec provider
+- `options`: Scrub settings for legacy auth files
 
-**⚠️ CRITICAL: Save this command in a safe place before proceeding.**
-
-### Step 3: Review and Confirm
-
-Check the dry-run output:
-- Are the expected secrets listed?
-- Are the ENV var names acceptable?
-- Is the count correct?
-
-### Step 4: Apply Migration
-
-**⚠️ Not recommended right now.** See the critical limitation above: OpenClaw will not expand `${ENV_VAR}` placeholders from `auth-profiles.json`.
-
-Only run this if you're intentionally rewriting the file for a custom runtime that *does* expand placeholders.
+### Step 3: Dry-Run (Recommended)
 
 ```bash
-clawvault openclaw migrate --apply --verbose
+openclaw secrets apply --from ./clawvault-migration-plan.json --dry-run
 ```
 
-**[Screenshot Placeholder: Apply migration output with backup paths]**
+This shows what changes will be made without actually applying them.
 
-What happens:
-1. ✅ Creates `.bak.TIMESTAMP` backup of each auth-profiles.json
-2. ✅ Migrates secrets to ClawVault (encrypted)
-3. ✅ Updates JSON files with `${ENV_VAR}` placeholders
-4. ✅ Prints restore commands for each file
-
-### Step 5: Restart OpenClaw Gateway
+### Step 4: Apply the Plan
 
 ```bash
-# Option A: Systemd user service
-systemctl --user restart openclaw
+openclaw secrets apply --from ./clawvault-migration-plan.json
+```
 
-# Option B: Direct restart
+This:
+1. Stores secrets in ClawVault (encrypted in keyring)
+2. Updates `auth-profiles.json` files with exec `keyRef`/`tokenRef`
+3. Configures the clawvault exec provider in OpenClaw
+
+### Step 5: Handle OAuth Separately
+
+OAuth credentials cannot use exec provider refs. Instead, use OpenClaw's native OAuth handling:
+
+```bash
+# Re-authenticate for each OAuth provider
+openclaw models auth login --provider google --sync-siblings
+openclaw models auth login --provider github --sync-siblings
+```
+
+The `--sync-siblings` flag automatically syncs tokens to all sibling agents.
+
+### Step 6: Restart Gateway
+
+```bash
 openclaw gateway restart
 ```
 
-**[Screenshot Placeholder: Systemd restart command and status]**
-
-### Step 6: Verify
-
-Check that agents can still authenticate:
+### Step 7: Verify
 
 ```bash
-# Check gateway logs
-journalctl --user -u openclaw -n 50
+# Test that secrets resolve correctly
+echo '{"protocolVersion":1,"ids":["providers/openai/key"]}' | clawvault resolve
 
-# Verify secrets are accessible
-clawvault list
-
-# Test agent functionality
-# (Send a test message to your agent)
+# Check agent status
+openclaw models status
 ```
 
-**[Screenshot Placeholder: Verification commands and output]**
+---
 
-### Step 7: Success → Cleanup
+## Cleanup: Deduplicate Auth Configurations
 
-If everything works, delete backups:
+After migration, you may have redundant auth profiles across agents. Use the cleanup command:
 
 ```bash
-rm /home/openclaw/.openclaw/agents/*/agent/auth-profiles.json.bak.*
+# Analyze auth configurations
+clawvault openclaw cleanup --audit --verbose
+
+# Generate consolidation plan
+clawvault openclaw cleanup --consolidate
 ```
 
-**⚠️ SECURITY REMINDER: Rotate your credentials!**
+The cleanup command detects:
+- **Shared profiles**: Same credentials duplicated across multiple agents
+- **Agents with no unique profiles**: Could inherit from main agent
+- **Global provider candidates**: Providers used by ALL agents
 
-Even though secrets were encrypted during migration, rotating ensures any potential context window exposure is mitigated.
+---
 
-### Step 8: Fail → Restore
+## Legacy Migration (Deprecated)
 
-If the gateway fails to start or agents can't authenticate:
+The old `--apply` method that writes `${ENV_VAR}` placeholders is **deprecated** and not recommended. It will be removed in a future version.
 
 ```bash
-# Restore from backup (use the exact path printed during migration)
-clawvault openclaw restore \
-  "/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json.bak.1739140800000" \
-  --yes
-
-# Restart gateway
-systemctl --user restart openclaw
+# DEPRECATED - do not use
+clawvault openclaw migrate --apply --verbose
 ```
 
-**[Screenshot Placeholder: Restore command execution]**
+OpenClaw does not expand `${ENV_VAR}` placeholders, so this will break authentication.
+
+---
+
+## Restore from Backup
+
+If something goes wrong, restore from backup:
+
+```bash
+clawvault openclaw restore /path/to/auth-profiles.json.bak.TIMESTAMP --yes
+openclaw gateway restart
+```
 
 ---
 
 ## Command Reference
 
-### Migrate
+### Migrate (Plan Mode - Recommended)
 
 ```bash
-# Dry-run (safe, no changes)
-clawvault openclaw migrate --verbose
+# Generate migration plan
+clawvault openclaw migrate --plan
 
-# Apply (backs up first)
-clawvault openclaw migrate --apply --verbose
+# With verbose output
+clawvault openclaw migrate --plan --verbose
 
-# Migrate single agent only
-clawvault openclaw migrate --apply --agent-id main
+# For single agent
+clawvault openclaw migrate --plan --agent-id main
 
-# Custom ENV prefix (default: OPENCLAW)
-clawvault openclaw migrate --apply --prefix MYPROJECT
+# Custom provider name
+clawvault openclaw migrate --plan --provider-name my-secrets
+```
 
-# API keys only (skip OAuth tokens)
-clawvault openclaw migrate --apply --api-keys-only
+### Cleanup
 
-# No backups (not recommended)
-clawvault openclaw migrate --apply --no-backup
+```bash
+# Brief summary
+clawvault openclaw cleanup
 
-# Custom mapping: profile → ENV var
-clawvault openclaw migrate --apply \
-  --map "openai:default=OPENAI_API_KEY" \
-  --map "anthropic:default=ANTHROPIC_API_KEY"
+# Detailed audit
+clawvault openclaw cleanup --audit --verbose
 
-# JSON output (for scripting)
-clawvault openclaw migrate --apply --json
+# Generate consolidation plan
+clawvault openclaw cleanup --consolidate
 ```
 
 ### Restore
 
 ```bash
-# Show what would be restored
-clawvault openclaw restore /path/to/backup.bak.12345
-
-# Actually restore
 clawvault openclaw restore /path/to/backup.bak.12345 --yes
 ```
 
 ---
 
-## What Gets Migrated
+## How It Works
 
-> Note: This section describes what ClawVault can *detect and store*. It does **not** guarantee that OpenClaw will successfully *consume* `${ENV_VAR}` placeholders from `auth-profiles.json` today.
+### Secret ID Mapping
 
-### Supported Types
+When OpenClaw needs a secret, it sends the exec provider ID to ClawVault:
 
-| Type | Fields Migrated | Example ENV Name |
-|------|----------------|------------------|
-| `api_key` | `key` | `OPENCLAW_OPENAI_OPENAI_DEFAULT_KEY` |
-| `oauth` | `access`, `refresh` | `OPENCLAW_GOOGLE_GOOGLE_DEFAULT_ACCESS` |
-| `oauth` | `accessToken`, `refreshToken` | `OPENCLAW_CUSTOM_TEST_ACCESSTOKEN` |
-
-### Naming Convention
-
-Default ENV var names:
-```
-<PREFIX>_<PROVIDER>_<PROFILE>_<FIELD>
+```text
+profileId: "openai:default", field: "key" → Exec ID: "providers/openai/key"
+profileId: "anthropic:default", field: "key" → Exec ID: "providers/anthropic/key"
 ```
 
-Examples:
-- `OPENCLAW_OPENAI_OPENAI_DEFAULT_KEY`
-- `OPENCLAW_KIMI_CODING_KIMI_CODING_DEFAULT_KEY`
-- `OPENCLAW_GOOGLE_GOOGLE_DEFAULT_ACCESS`
+ClawVault's `resolve` command looks up the secret in the keyring by ID:
 
-Override with `--map`:
 ```bash
---map "openai:default=OPENAI_API_KEY"
-→ Results in: ${OPENAI_API_KEY}
+echo '{"protocolVersion":1,"ids":["providers/openai/key"]}' | clawvault resolve
+# Returns: {"protocolVersion":1,"values":{"providers/openai/key":"sk-actual-key..."}}
+```
+
+### ProviderUpsert Configuration
+
+The plan file tells OpenClaw how to invoke ClawVault:
+
+```json
+{
+  "providerUpserts": {
+    "clawvault": {
+      "source": "exec",
+      "command": ["clawvault", "resolve"],
+      "jsonOnly": true
+    }
+  }
+}
 ```
 
 ---
@@ -272,60 +265,53 @@ Override with `--map`:
 
 **Cause:** OpenClaw not installed or agents in different location.
 
-**Solution:** Specify custom directory:
+**Solution:**
 ```bash
-clawvault openclaw migrate --openclaw-dir /custom/path
+clawvault openclaw migrate --plan --openclaw-dir /custom/path
 ```
 
-### "Failed to store credential in keyring"
+### "not found in keychain" error
 
-**Cause:** No keyring backend available.
+**Cause:** Secret not stored in keyring.
 
-**Solution:** Check doctor output:
-```bash
-clawvault doctor
-```
-
-Install `secret-tool` (GNOME) or use `systemd-creds` fallback.
-
-### "Invalid auth store JSON"
-
-**Cause:** Corrupted auth-profiles.json file.
-
-**Solution:** Check the file manually:
-```bash
-cat ~/.openclaw/agents/main/agent/auth-profiles.json | jq
-```
+**Solution:**
+1. Check that migration applied successfully
+2. Verify secret is in keyring: `clawvault list`
+3. Re-run migration if needed
 
 ### Gateway won't start after migration
 
-**Cause:** `auth-profiles.json` now contains `${ENV_VAR}` placeholders, but OpenClaw does not expand them (it treats them as literal strings).
+**Cause:** Auth profiles contain invalid refs.
 
 **Immediate fix:**
 ```bash
-# Restore backups
+# Restore from backup
 clawvault openclaw restore /path/to/backup.bak.XXX --yes
-systemctl --user restart openclaw
+openclaw gateway restart
 ```
 
-**Then debug:** Check that secrets are accessible:
+### OAuth providers not working
+
+**Cause:** OAuth credentials can't use exec provider refs.
+
+**Solution:** Re-authenticate via OpenClaw:
 ```bash
-clawvault list
+openclaw models auth login --provider <provider> --sync-siblings
 ```
 
 ---
 
 ## Security Considerations
 
-1. **Backups are created automatically** — don't delete them until you've verified everything works
-2. **Old backups may contain plaintext** — delete them after successful verification
-3. **Rotate credentials after migration** — mitigates any potential context window exposure
-4. **ENV var names are deterministic** — anyone with file access knows what vars to look for
+1. **Secrets never leave the keyring** - OpenClaw fetches values via exec provider at runtime
+2. **Plan files contain metadata only** - No secret values in the plan JSON
+3. **Backups are created** - Original files backed up before modification
+4. **Audit logging** - All operations logged with metadata only (no values)
 
 ---
 
 ## See Also
 
-- [Secret Requests](SECRET-REQUESTS.md) — One-time secure links for new secrets
-- [CLI Reference](CLI.md) — All commands and options
-- [Security Model](SECURITY.md) — Detailed threat model
+- [Secret Requests](SECRET-REQUESTS.md) - One-time secure links for new secrets
+- [CLI Reference](CLI.md) - All commands and options
+- [Security Model](SECURITY.md) - Detailed threat model

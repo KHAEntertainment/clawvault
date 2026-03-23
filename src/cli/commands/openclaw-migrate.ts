@@ -1,6 +1,8 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
-import { migrateAllOpenClawAuthStores } from '../../openclaw/migrate.js'
+import { writeFile } from 'fs/promises'
+import { migrateAllOpenClawAuthStores, generateSecretsApplyPlan } from '../../openclaw/migrate.js'
+import { createSecretsApplyPlan } from '../../openclaw/plan.js'
 
 interface OpenClawMigrateOptions {
   apply?: boolean
@@ -12,6 +14,8 @@ interface OpenClawMigrateOptions {
   map?: string[]
   json?: boolean
   verbose?: boolean
+  plan?: boolean
+  providerName?: string
 }
 
 function collect(value: string, previous: string[]): string[] {
@@ -35,8 +39,61 @@ function parseProfileMap(entries: string[] | undefined): Record<string, string> 
   return map
 }
 
+async function handlePlanGeneration(options: OpenClawMigrateOptions): Promise<void> {
+  const analysis = await generateSecretsApplyPlan({
+    openclawDir: options.openclawDir,
+    agentId: options.agentId,
+    providerName: options.providerName,
+  })
+
+  const plan = createSecretsApplyPlan(analysis, {
+    providerName: options.providerName,
+  })
+
+  const outputPath = 'clawvault-migration-plan.json'
+  await writeFile(outputPath, JSON.stringify(plan, null, 2), 'utf-8')
+
+  console.log(chalk.green(`SecretsApplyPlan generated: ${outputPath}`))
+  console.log(chalk.gray(`Agents scanned: ${analysis.totalAgents}`))
+  console.log('')
+
+  if (analysis.migratable.length > 0) {
+    console.log(chalk.green(`Secrets that CAN be migrated via exec provider: ${analysis.migratable.length}`))
+    if (options.verbose) {
+      for (const secret of analysis.migratable) {
+        console.log(`  ${chalk.cyan(secret.profileId)} (${secret.agentId})`)
+        console.log(`    Provider: ${secret.provider}, Field: ${secret.field}`)
+        console.log(`    Exec ID: ${chalk.green(secret.secretId)}`)
+      }
+    }
+  }
+
+  if (analysis.nonMigratable.length > 0) {
+    console.log(chalk.yellow(`Secrets that CANNOT be migrated: ${analysis.nonMigratable.length}`))
+    const oauthCount = analysis.nonMigratable.filter(s => s.reason === 'oauth_not_supported').length
+    if (oauthCount > 0) {
+      console.log(chalk.gray(`  - ${oauthCount} OAuth credentials (not supported by exec provider)`))
+    }
+    if (options.verbose) {
+      for (const secret of analysis.nonMigratable) {
+        const reasonText = secret.reason === 'oauth_not_supported'
+          ? 'OAuth not supported via exec provider'
+          : secret.reason
+        console.log(`  ${chalk.cyan(secret.profileId)} (${secret.agentId}): ${chalk.gray(reasonText)}`)
+      }
+    }
+  }
+
+  console.log('')
+  console.log('Next steps:')
+  console.log(`  1. Review the plan: cat ${outputPath}`)
+  console.log('  2. Dry-run: openclaw secrets apply --from ./clawvault-migration-plan.json --dry-run')
+  console.log('  3. Apply: openclaw secrets apply --from ./clawvault-migration-plan.json')
+  console.log('  4. For OAuth: Use openclaw models auth login --sync-siblings instead')
+}
+
 export const openclawMigrateCommand = new Command('migrate')
-  .description('Migrate OpenClaw plaintext auth-profiles.json secrets into ClawVault keyring and replace with ${ENV_VAR} placeholders')
+  .description('Migrate OpenClaw plaintext auth-profiles.json secrets via exec provider plan (recommended) or legacy ${ENV_VAR} substitution')
   .option('--apply', 'Apply changes (default is dry-run)')
   .option('--openclaw-dir <path>', 'OpenClaw root directory (default: ~/.openclaw)')
   .option('--agent-id <id>', 'Only migrate a single agent by id')
@@ -46,10 +103,18 @@ export const openclawMigrateCommand = new Command('migrate')
   .option('--map <profileId=ENV_VAR>', 'Map an OpenClaw profileId to a specific env var name (api_key only)', collect, [])
   .option('--json', 'Output JSON report (metadata only)')
   .option('--verbose', 'Print per-secret actions (metadata only)')
+  .option('--plan', 'Generate a SecretsApplyPlan for openclaw secrets apply (recommended)')
+  .option('--provider-name <name>', 'Exec provider name in plan file', 'clawvault')
   .action(async (options: OpenClawMigrateOptions) => {
     try {
+      // Handle --plan mode (generate SecretsApplyPlan)
+      if (options.plan) {
+        await handlePlanGeneration(options)
+        return
+      }
+
       console.warn(
-        'DEPRECATED: clawvault openclaw migrate is deprecated and will be removed in a future version. The command still runs today, but we recommend using `openclaw secrets configure` instead.'
+        'DEPRECATED: clawvault openclaw migrate without --plan is deprecated. Use --plan to generate a SecretsApplyPlan for `openclaw secrets apply`.'
       )
 
       const dryRun = !options.apply
