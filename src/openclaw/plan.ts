@@ -63,7 +63,7 @@ export interface MigratableSecret {
   authStorePath: string
   profileId: string
   provider: string
-  field: string
+  field: 'key' | 'token'
   secretId: string // The exec provider ID, e.g., "providers/openai/key"
   length: number
 }
@@ -104,8 +104,14 @@ export interface PlanAnalysis {
  * Must match pattern: ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$
  */
 export function buildExecProviderId(provider: string, field: string): string {
-  const sanitizedProvider = provider.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '') || 'unknown'
-  const sanitizedField = field.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '') || 'unnamed'
+  let sanitizedProvider = provider.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '') || 'unknown'
+  let sanitizedField = field.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '') || 'unnamed'
+  // Enforce max total length of 256: "providers/".length (10) + provider + "/" (1) + field <= 256
+  const available = 256 - 'providers/'.length - 1
+  const providerMax = Math.ceil(available / 2)
+  const fieldMax = Math.floor(available / 2)
+  sanitizedProvider = sanitizedProvider.slice(0, providerMax)
+  sanitizedField = sanitizedField.slice(0, fieldMax)
   return `providers/${sanitizedProvider}/${sanitizedField}`
 }
 
